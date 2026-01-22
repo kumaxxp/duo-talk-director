@@ -140,10 +140,16 @@ class ToneChecker:
 
     @staticmethod
     def _normalize_for_checks(text: str) -> str:
-        """Normalize text for checking"""
+        """Normalize text for checking
+
+        Note: Quote brackets 「」『』 are removed but their content is kept,
+        since dialogue content (where tone markers appear) is inside quotes.
+        Parenthetical content （）is still removed as it's usually action descriptions.
+        """
         normalized = text or ""
-        # Remove quoted content
-        normalized = re.sub(r"[「『][^」』]*[」』]", "", normalized)
+        # Keep quoted content but remove brackets (dialogue is inside quotes!)
+        normalized = re.sub(r"[「『」』]", "", normalized)
+        # Remove parenthetical action descriptions
         normalized = re.sub(r"（[^）]*）", "", normalized)
         # Normalize punctuation
         normalized = normalized.replace("｡", "。")

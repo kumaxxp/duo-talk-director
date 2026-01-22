@@ -118,6 +118,58 @@ class TestToneChecker:
         result = checker.check("B", response)
         assert result.passed is True
 
+    # === Quoted content handling (BUG FIX) ===
+
+    def test_yana_markers_inside_quotes_should_pass(
+        self, checker: ToneChecker, yana_speaker: str
+    ):
+        """やな with markers inside quotes should PASS (bug fix)
+
+        The actual dialogue content is often inside quotes 「」.
+        Markers inside quotes should be checked, not removed.
+        """
+        response = '「えー、ほんとにすっごいじゃん！」'
+        result = checker.check(yana_speaker, response)
+        assert result.passed is True, f"Markers inside quotes should be detected: {result.reason}"
+        assert result.status == DirectorStatus.PASS
+
+    def test_ayu_markers_inside_quotes_should_pass(
+        self, checker: ToneChecker, ayu_speaker: str
+    ):
+        """あゆ with markers inside quotes should PASS (bug fix)
+
+        The actual dialogue content is often inside quotes 「」.
+        Markers inside quotes should be checked, not removed.
+        """
+        response = '「つまり、一般的にはそうですね。推奨されますよ。」'
+        result = checker.check(ayu_speaker, response)
+        assert result.passed is True, f"Markers inside quotes should be detected: {result.reason}"
+        assert result.status == DirectorStatus.PASS
+
+    def test_yana_mixed_quoted_unquoted_content(
+        self, checker: ToneChecker, yana_speaker: str
+    ):
+        """やな with mixed quoted/unquoted content should detect markers in both"""
+        response = '*笑顔で* 「えー、すっごいじゃん！」'
+        result = checker.check(yana_speaker, response)
+        assert result.passed is True
+
+    def test_action_with_quoted_dialogue_yana(
+        self, checker: ToneChecker, yana_speaker: str
+    ):
+        """Action description + quoted dialogue for やな"""
+        response = '*首をかしげて* 「ほんと？やってみようよ～」'
+        result = checker.check(yana_speaker, response)
+        assert result.passed is True
+
+    def test_action_with_quoted_dialogue_ayu(
+        self, checker: ToneChecker, ayu_speaker: str
+    ):
+        """Action description + quoted dialogue for あゆ"""
+        response = '*頷いて* 「そうですね、姉様。一般的にはそうですよ。」'
+        result = checker.check(ayu_speaker, response)
+        assert result.passed is True
+
 
 class TestPraiseChecker:
     """Tests for PraiseChecker"""
