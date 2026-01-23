@@ -53,12 +53,13 @@ class TestToneChecker:
     def test_yana_missing_markers_retries(
         self, checker: ToneChecker, yana_speaker: str, yana_bad_response: str
     ):
-        """やな without tone markers should RETRY (score=0)"""
+        """やな with formal language (です/ます) should RETRY (v2.1 violation-based)"""
         result = checker.check(yana_speaker, yana_bad_response)
-        # Score=0 results in RETRY
+        # v2.1: Formal endings (です/ます) cause RETRY
         assert result.passed is False
         assert result.status == DirectorStatus.RETRY
-        assert result.details.get("score") == 0
+        # v2.1: Check for violation type instead of score
+        assert result.details.get("violation_type") == "forbidden_ending"
 
     def test_ayu_missing_markers_retries(
         self, checker: ToneChecker, ayu_speaker: str, ayu_bad_response: str
@@ -99,14 +100,14 @@ class TestToneChecker:
         assert "suggestion" in result.details
         assert "姉様" in result.details["suggestion"]  # Guidance to use "姉様" instead
 
-    # === WARN cases ===
+    # === PASS cases (v2.1 Negative Policing) ===
 
-    def test_yana_partial_markers_warns(self, checker: ToneChecker, yana_speaker: str):
-        """やな with only one marker should WARN"""
-        response = "うーん。"  # Only vocab marker, no style markers
+    def test_yana_neutral_response_passes(self, checker: ToneChecker, yana_speaker: str):
+        """やな without markers but no violations should PASS (v2.1 key change)"""
+        response = "うーん。"  # No violations, no required markers
         result = checker.check(yana_speaker, response)
-        # Should be WARN (score=1) or RETRY (score=0) depending on style check
-        assert result.status in [DirectorStatus.WARN, DirectorStatus.RETRY]
+        # v2.1: No violations = PASS (regardless of markers)
+        assert result.status == DirectorStatus.PASS
 
     # === Unknown speaker ===
 

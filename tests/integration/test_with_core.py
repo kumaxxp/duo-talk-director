@@ -70,17 +70,17 @@ class TestDirectorIntegrationWithCore:
         assert result.status == "RETRY"
 
     def test_director_warn_scenario(self, director: DirectorMinimal):
-        """Test scenario where Director returns WARN"""
-        # Response with partial markers
+        """Test scenario where Director returns WARN (v2.1: excessive exclamation)"""
+        # Response with excessive exclamation marks (>3) causes WARN
         result = director.evaluate_response(
             speaker="やな",
-            response="うーん。",
+            response="すごい！やばい！最高！これは！ほんとに！",
             topic="テスト",
             history=[],
             turn_number=0,
         )
-        # Should be WARN or RETRY
-        assert result.status in (DirectorStatus.WARN, DirectorStatus.RETRY)
+        # v2.1: Excessive ！ causes WARN
+        assert result.status == DirectorStatus.WARN
 
     @pytest.mark.skipif(
         True,  # Skip by default - requires duo-talk-core import
@@ -107,12 +107,12 @@ class TestDirectorWithMockedDialogueManager:
         return DirectorMinimal()
 
     def test_retry_loop_simulation(self, director: DirectorMinimal):
-        """Simulate DialogueManager retry loop with Director"""
+        """Simulate DialogueManager retry loop with Director (v2.1 violation-based)"""
         max_retries = 3
         responses = [
-            "わかりました。了解です。",  # RETRY (bad tone, score=0)
-            "了解。わかった。",  # RETRY (bad tone, score=0)
-            "えー、すっごいじゃん！",  # PASS
+            "わかりました。了解です。",  # RETRY (v2.1: forbidden ending ます/です)
+            "そうですね。理解しています。",  # RETRY (v2.1: forbidden ending です/ます)
+            "えー、すっごいじゃん！",  # PASS (no violations)
         ]
 
         accepted_response = None

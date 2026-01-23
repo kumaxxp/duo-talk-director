@@ -1,40 +1,73 @@
-"""Tone marker check for character speech patterns
+"""Tone marker check for character speech patterns (v2.1 - Negative Policing)
 
-Validates that characters use appropriate speech patterns:
-- やな (Yana): Casual, emotional markers
-- あゆ (Ayu): Polite, logical markers
+v2.1 Changes:
+- Removed "positive scoring" (requiring markers)
+- Focus on "negative policing" (detecting violations)
+- Neutral responses without violations now PASS
+
+Violations detected:
+- やな (Yana): Formal endings (です/ます), 姉様 self-reference, excessive ！
+- あゆ (Ayu): Casual endings (だね/じゃん), slang, wrong role calls
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from ..interfaces import CheckResult, DirectorStatus
 
 
 @dataclass
-class ToneMarkers:
-    """Tone markers for a character"""
-    markers: list[str]  # Required markers
-    vocab_markers: list[str]  # Vocabulary markers
-    expected_desc: list[str]  # Description for suggestion
-    forbidden_words: list[str]  # Words this character cannot use
+class ToneViolations:
+    """Violation rules for a character (v2.1 Negative Policing)"""
+
+    # Forbidden word endings (sentence-final patterns)
+    forbidden_endings: list[str] = field(default_factory=list)
+
+    # Forbidden words anywhere in text
+    forbidden_words: list[str] = field(default_factory=list)
+
+    # Forbidden slang/expressions
+    forbidden_slang: list[str] = field(default_factory=list)
+
+    # Description for each forbidden pattern (for error messages)
+    forbidden_guidance: dict[str, str] = field(default_factory=dict)
 
 
 # やな (Yana / Elder sister) - Casual, emotional
-YANA_MARKERS = ToneMarkers(
-    markers=["わ！", "へ？", "よね", "かな", "かも", "だね", "じゃん", "～"],
-    vocab_markers=["やだ", "ほんと", "えー", "うーん", "すっごい", "そっか", "だね", "ね。", "もー"],
-    expected_desc=["わ！", "へ？", "〜よね", "〜かな", "〜かも", "〜だね", "〜じゃん"],
+# VIOLATION: Using formal language (です/ます) is forbidden
+# Note: Longer patterns first to avoid substring matching (e.g., "ございます" before "ます")
+YANA_VIOLATIONS = ToneViolations(
+    forbidden_endings=["ございます", "致します", "です", "ます"],
     forbidden_words=["姉様"],  # That's how Ayu calls Yana
+    forbidden_slang=[],  # Yana can use casual slang
+    forbidden_guidance={
+        "です": "丁寧語（です）は禁止です。砕けた口調で話してください。",
+        "ます": "丁寧語（ます）は禁止です。砕けた口調で話してください。",
+        "ございます": "丁寧語（ございます）は禁止です。砕けた口調で話してください。",
+        "致します": "丁寧語（致します）は禁止です。砕けた口調で話してください。",
+        "姉様": "「姉様」はあゆが姉のやなを呼ぶ言葉です。やなは妹を「あゆ」と呼んでください。",
+    },
 )
 
 # あゆ (Ayu / Younger sister) - Polite, logical
-AYU_MARKERS = ToneMarkers(
-    markers=["でしょう", "ですね", "ました", "ません", "ですよ", "ですか"],
-    vocab_markers=["つまり", "要するに", "一般的に", "目安", "推奨", "ですね", "です。"],
-    expected_desc=["〜でしょう", "〜ですね", "〜ました", "〜ですよ"],
-    forbidden_words=["姉上", "お姉ちゃん"],  # Wrong ways to call Yana
+# VIOLATION: Using casual language (だね/じゃん) or slang is forbidden
+AYU_VIOLATIONS = ToneViolations(
+    forbidden_endings=["だね", "だよ", "じゃん", "でしょ"],
+    forbidden_words=["姉上", "お姉ちゃん", "やなちゃん"],  # Wrong ways to call Yana
+    forbidden_slang=["マジ", "ヤバい", "うける"],
+    forbidden_guidance={
+        "だね": "カジュアルな語尾（だね）は禁止です。丁寧語で話してください。",
+        "だよ": "カジュアルな語尾（だよ）は禁止です。丁寧語で話してください。",
+        "じゃん": "カジュアルな語尾（じゃん）は禁止です。丁寧語で話してください。",
+        "でしょ": "カジュアルな語尾（でしょ）は禁止です。「でしょう」を使ってください。",
+        "姉上": "「姉上」ではなく「姉様」を使ってください。",
+        "お姉ちゃん": "「お姉ちゃん」ではなく「姉様」を使ってください。",
+        "やなちゃん": "「やなちゃん」ではなく「姉様」を使ってください。",
+        "マジ": "スラング「マジ」は禁止です。「本当に」を使ってください。",
+        "ヤバい": "スラング「ヤバい」は禁止です。丁寧な表現を使ってください。",
+        "うける": "スラング「うける」は禁止です。丁寧な表現を使ってください。",
+    },
 )
 
 # Role information for error messages
@@ -43,48 +76,43 @@ ROLE_INFO = {
         "role": "姉 (Elder Sister)",
         "calls_partner": "あゆ",
         "partner_calls_me": "姉様",
-        "forbidden_guidance": {
-            "姉様": "「姉様」はあゆが姉のやなを呼ぶ言葉です。やなは妹を「あゆ」と呼んでください。",
-        },
     },
     "あゆ": {
         "role": "妹 (Younger Sister)",
         "calls_partner": "姉様",
         "partner_calls_me": "あゆ",
-        "forbidden_guidance": {
-            "姉上": "「姉上」ではなく「姉様」を使ってください。",
-            "お姉ちゃん": "「お姉ちゃん」ではなく「姉様」を使ってください。",
-        },
     },
     "A": {
         "role": "姉 (Elder Sister)",
         "calls_partner": "あゆ",
         "partner_calls_me": "姉様",
-        "forbidden_guidance": {
-            "姉様": "「姉様」はあゆが姉のやなを呼ぶ言葉です。やなは妹を「あゆ」と呼んでください。",
-        },
     },
     "B": {
         "role": "妹 (Younger Sister)",
         "calls_partner": "姉様",
         "partner_calls_me": "あゆ",
-        "forbidden_guidance": {
-            "姉上": "「姉上」ではなく「姉様」を使ってください。",
-            "お姉ちゃん": "「お姉ちゃん」ではなく「姉様」を使ってください。",
-        },
     },
 }
 
+# Exclamation mark threshold for warning
+EXCLAMATION_WARN_THRESHOLD = 3
+
 
 class ToneChecker:
-    """Check tone markers for character consistency"""
+    """Check tone violations for character consistency (v2.1 Negative Policing)
+
+    v2.1 Key Changes:
+    - No longer requires positive markers
+    - Only checks for violations (forbidden patterns)
+    - Neutral responses without violations → PASS
+    """
 
     def __init__(self):
-        self.markers = {
-            "やな": YANA_MARKERS,
-            "あゆ": AYU_MARKERS,
-            "A": YANA_MARKERS,  # Legacy support
-            "B": AYU_MARKERS,
+        self.violations = {
+            "やな": YANA_VIOLATIONS,
+            "あゆ": AYU_VIOLATIONS,
+            "A": YANA_VIOLATIONS,  # Legacy support
+            "B": AYU_VIOLATIONS,
         }
 
     def check(
@@ -92,7 +120,7 @@ class ToneChecker:
         speaker: str,
         response: str,
     ) -> CheckResult:
-        """Check tone markers in response
+        """Check for tone violations in response (v2.1 Negative Policing)
 
         Args:
             speaker: Character name ("やな", "あゆ", "A", or "B")
@@ -101,8 +129,8 @@ class ToneChecker:
         Returns:
             CheckResult with pass/fail status
         """
-        tone_markers = self.markers.get(speaker)
-        if tone_markers is None:
+        violations = self.violations.get(speaker)
+        if violations is None:
             return CheckResult(
                 name="tone_check",
                 passed=True,
@@ -111,12 +139,94 @@ class ToneChecker:
 
         normalized = self._normalize_for_checks(response)
 
-        # Check forbidden words first
-        for word in tone_markers.forbidden_words:
+        # Empty response is OK (no violations possible)
+        if not normalized.strip():
+            return CheckResult(
+                name="tone_check",
+                passed=True,
+                status=DirectorStatus.PASS,
+                reason="OK (empty response)",
+            )
+
+        role_info = ROLE_INFO.get(speaker, {})
+        role = role_info.get("role", speaker)
+
+        # 1. Check forbidden endings (sentence-final patterns)
+        ending_violation = self._check_forbidden_endings(
+            normalized, violations, speaker, role
+        )
+        if ending_violation:
+            return ending_violation
+
+        # 2. Check forbidden words
+        word_violation = self._check_forbidden_words(
+            normalized, violations, speaker, role
+        )
+        if word_violation:
+            return word_violation
+
+        # 3. Check forbidden slang
+        slang_violation = self._check_forbidden_slang(
+            normalized, violations, speaker, role
+        )
+        if slang_violation:
+            return slang_violation
+
+        # 4. Check excessive exclamation marks (warning only for やな)
+        if speaker in ("A", "やな"):
+            exclamation_warning = self._check_excessive_exclamation(normalized)
+            if exclamation_warning:
+                return exclamation_warning
+
+        # No violations found → PASS
+        return CheckResult(
+            name="tone_check",
+            passed=True,
+            status=DirectorStatus.PASS,
+            reason="OK",
+            details={"violations_checked": True},
+        )
+
+    def _check_forbidden_endings(
+        self,
+        normalized: str,
+        violations: ToneViolations,
+        speaker: str,
+        role: str,
+    ) -> Optional[CheckResult]:
+        """Check for forbidden sentence endings"""
+        for ending in violations.forbidden_endings:
+            # Check if ending appears at sentence boundary
+            # Pattern: ending + (。、？！ or end of string)
+            pattern = rf"{re.escape(ending)}(?=[。、？！\s]|$)"
+            if re.search(pattern, normalized):
+                guidance = violations.forbidden_guidance.get(
+                    ending, f"「{ending}」は使用禁止です。"
+                )
+                return CheckResult(
+                    name="tone_check",
+                    passed=False,
+                    status=DirectorStatus.RETRY,
+                    reason=f"役割違反: あなたは「{speaker}」（{role}）です。禁止された語尾「{ending}」を使用しました。",
+                    details={
+                        "violation_type": "forbidden_ending",
+                        "forbidden_ending": ending,
+                        "suggestion": guidance,
+                    },
+                )
+        return None
+
+    def _check_forbidden_words(
+        self,
+        normalized: str,
+        violations: ToneViolations,
+        speaker: str,
+        role: str,
+    ) -> Optional[CheckResult]:
+        """Check for forbidden words anywhere in text"""
+        for word in violations.forbidden_words:
             if word in normalized:
-                role_info = ROLE_INFO.get(speaker, {})
-                role = role_info.get("role", speaker)
-                guidance = role_info.get("forbidden_guidance", {}).get(
+                guidance = violations.forbidden_guidance.get(
                     word, f"「{word}」は使用禁止です。"
                 )
                 return CheckResult(
@@ -125,64 +235,57 @@ class ToneChecker:
                     status=DirectorStatus.RETRY,
                     reason=f"役割違反: あなたは「{speaker}」（{role}）です。禁止ワード「{word}」を使用しました。",
                     details={
+                        "violation_type": "forbidden_word",
                         "forbidden_word": word,
                         "suggestion": guidance,
                     },
                 )
+        return None
 
-        # Calculate tone score
-        found_markers = [m for m in tone_markers.markers if m in normalized]
-        marker_hit = len(found_markers) >= 1
+    def _check_forbidden_slang(
+        self,
+        normalized: str,
+        violations: ToneViolations,
+        speaker: str,
+        role: str,
+    ) -> Optional[CheckResult]:
+        """Check for forbidden slang expressions"""
+        for slang in violations.forbidden_slang:
+            if slang in normalized:
+                guidance = violations.forbidden_guidance.get(
+                    slang, f"スラング「{slang}」は禁止です。"
+                )
+                return CheckResult(
+                    name="tone_check",
+                    passed=False,
+                    status=DirectorStatus.RETRY,
+                    reason=f"役割違反: あなたは「{speaker}」（{role}）です。禁止スラング「{slang}」を使用しました。",
+                    details={
+                        "violation_type": "forbidden_slang",
+                        "forbidden_slang": slang,
+                        "suggestion": guidance,
+                    },
+                )
+        return None
 
-        vocab_hit = any(word in normalized for word in tone_markers.vocab_markers)
-
-        style_hit = self._check_style(speaker, normalized)
-
-        tone_score = int(marker_hit) + int(vocab_hit) + int(style_hit)
-
-        if tone_score >= 2:
-            return CheckResult(
-                name="tone_check",
-                passed=True,
-                status=DirectorStatus.PASS,
-                reason="OK",
-                details={"score": tone_score, "found_markers": found_markers},
-            )
-        elif tone_score == 1:
+    def _check_excessive_exclamation(
+        self, normalized: str
+    ) -> Optional[CheckResult]:
+        """Check for excessive exclamation mark usage (warning only)"""
+        count = normalized.count("！")
+        if count > EXCLAMATION_WARN_THRESHOLD:
             return CheckResult(
                 name="tone_check",
                 passed=True,  # WARN is still passing
                 status=DirectorStatus.WARN,
-                reason=f"口調スコア不足 (score={tone_score})",
+                reason=f"感嘆符が多すぎます (count={count})",
                 details={
-                    "score": tone_score,
-                    "suggestion": f"口調マーカーを追加: {', '.join(tone_markers.expected_desc)}",
+                    "violation_type": "excessive_exclamation",
+                    "exclamation_count": count,
+                    "suggestion": "もう少し落ち着いた表現を使ってください。",
                 },
             )
-        else:
-            return CheckResult(
-                name="tone_check",
-                passed=False,
-                status=DirectorStatus.RETRY,
-                reason=f"口調スコア不足 (score={tone_score})",
-                details={
-                    "score": tone_score,
-                    "suggestion": f"口調マーカーを追加: {', '.join(tone_markers.expected_desc)}",
-                },
-            )
-
-    def _check_style(self, speaker: str, normalized: str) -> bool:
-        """Check style based on character type"""
-        sentences = self._split_sentences(normalized)
-        sentence_count = len(sentences)
-
-        if speaker in ("A", "やな"):
-            # Yana: Short, emotional sentences
-            return sentence_count <= 3 and ("！" in normalized or "？" in normalized or "～" in normalized)
-        else:
-            # Ayu: Polite forms
-            polite_matches = re.findall(r"(です|ます|でした|ました)", normalized)
-            return len(polite_matches) >= 2
+        return None
 
     @staticmethod
     def _normalize_for_checks(text: str) -> str:

@@ -273,8 +273,8 @@ class TestDirectorMinimal:
         director: DirectorMinimal,
         sample_history: list[dict],
     ):
-        """RETRY reason should explain what went wrong"""
-        # Bad tone for やな (no markers at all, score=0)
+        """RETRY reason should explain what went wrong (v2.1 violation-based)"""
+        # Bad tone for やな (uses forbidden endings です/ます)
         result = director.evaluate_response(
             speaker="やな",
             response="わかりました。了解です。",
@@ -283,7 +283,8 @@ class TestDirectorMinimal:
             turn_number=2,
         )
         assert result.status == DirectorStatus.RETRY
-        assert "口調" in result.reason or "score" in result.reason.lower()
+        # v2.1: Reason includes role violation info instead of score
+        assert "役割違反" in result.reason or "禁止" in result.reason
 
 
 class TestDirectorProtocolCompliance:
