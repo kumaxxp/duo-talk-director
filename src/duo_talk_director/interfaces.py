@@ -100,6 +100,43 @@ class DirectorProtocol(ABC):
 
 
 @dataclass
+class LLMEvaluationScore:
+    """LLM-based 5-axis evaluation scores (Phase 2.2)
+
+    Attributes:
+        character_consistency: Character setting consistency (0.0-1.0)
+        topic_novelty: Topic freshness and variety (0.0-1.0)
+        relationship_quality: Sibling relationship expression (0.0-1.0)
+        naturalness: Natural dialogue flow (0.0-1.0)
+        concreteness: Information specificity (0.0-1.0)
+        overall_score: Weighted average of all metrics (0.0-1.0)
+        issues: List of detected problems
+        strengths: List of good points
+    """
+
+    character_consistency: float
+    topic_novelty: float
+    relationship_quality: float
+    naturalness: float
+    concreteness: float
+    overall_score: float = 0.0
+    issues: list[str] = field(default_factory=list)
+    strengths: list[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        """Calculate overall_score if not provided"""
+        if self.overall_score == 0.0:
+            # Weighted average (same weights as duo-talk-evaluation)
+            self.overall_score = (
+                self.character_consistency * 0.25
+                + self.topic_novelty * 0.20
+                + self.relationship_quality * 0.25
+                + self.naturalness * 0.15
+                + self.concreteness * 0.15
+            )
+
+
+@dataclass
 class CheckResult:
     """Result of a single static check
 

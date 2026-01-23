@@ -8,13 +8,24 @@ from .interfaces import (
     DirectorStatus,
     DirectorEvaluation,
     DirectorProtocol,
+    LLMEvaluationScore,
 )
 from .director_minimal import DirectorMinimal
+from .director_llm import DirectorLLM
+from .director_hybrid import DirectorHybrid
+from .config.thresholds import ThresholdConfig
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"  # Phase 2.2: LLM-based Director
 __all__ = [
+    # Interfaces
     "DirectorStatus",
     "DirectorEvaluation",
     "DirectorProtocol",
+    "LLMEvaluationScore",
+    # Directors
     "DirectorMinimal",
+    "DirectorLLM",
+    "DirectorHybrid",
+    # Config
+    "ThresholdConfig",
 ]

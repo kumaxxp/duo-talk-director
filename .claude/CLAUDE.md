@@ -4,9 +4,11 @@
 AI姉妹対話の品質制御システム。
 **Phase 2**: Directorによる対話品質モニタリングと制御。
 
-## 現在の状態 (2026-01-23)
+## 現在の状態 (2026-01-24)
 - **DirectorMinimal**: ✅ 静的チェックのみの実装完了
-- **テスト**: ✅ 65テスト passed, カバレッジ96%
+- **DirectorLLM**: ✅ LLM5軸評価実装完了
+- **DirectorHybrid**: ✅ ハイブリッド方式実装完了
+- **テスト**: ✅ 190テスト passed, カバレッジ94%
 - **A/Bテスト**: ✅ 実行済み（duo-talk-evaluation）
 
 ## Git管理方針
@@ -46,22 +48,29 @@ git push -u origin main
 duo-talk-director/
 ├── src/duo_talk_director/
 │   ├── __init__.py           # パッケージエクスポート
-│   ├── interfaces.py         # DirectorProtocol, CheckResult, DirectorStatus
+│   ├── interfaces.py         # DirectorProtocol, LLMEvaluationScore
 │   ├── director_minimal.py   # 静的チェックのみのDirector
-│   └── checks/
-│       ├── __init__.py
-│       ├── tone_check.py     # 口調マーカー検証
-│       ├── praise_check.py   # 褒め言葉検出
-│       ├── setting_check.py  # 設定違反検出
-│       └── format_check.py   # 応答長検証
+│   ├── director_llm.py       # LLM5軸評価Director (Phase 2.2)
+│   ├── director_hybrid.py    # ハイブリッドDirector (Phase 2.2)
+│   ├── checks/               # 静的チェッカー
+│   │   ├── tone_check.py     # 口調マーカー検証
+│   │   ├── praise_check.py   # 褒め言葉検出
+│   │   ├── setting_check.py  # 設定違反検出
+│   │   └── format_check.py   # 応答長検証
+│   ├── llm/                  # LLM評価モジュール (Phase 2.2)
+│   │   ├── evaluator.py      # LLM評価ロジック
+│   │   └── prompts.py        # 評価プロンプト
+│   └── config/               # 設定 (Phase 2.2)
+│       └── thresholds.py     # 閾値設定
 ├── tests/
-│   ├── conftest.py           # テストフィクスチャ
-│   ├── test_checks.py        # 個別チェッカーのテスト
-│   ├── test_director_minimal.py
+│   ├── test_director_llm.py  # LLM Directorテスト
+│   ├── test_director_hybrid.py # Hybrid Directorテスト
+│   ├── test_llm_evaluator.py # LLM評価器テスト
+│   ├── test_thresholds.py    # 閾値テスト
 │   └── integration/
 │       └── test_with_core.py # duo-talk-coreとの統合テスト
 └── config/
-    └── (設定ファイル用)
+    └── evaluation_thresholds.yaml # 閾値設定ファイル
 ```
 
 ## 主要コンポーネント
@@ -80,6 +89,62 @@ evaluation = director.evaluate_response(
     turn_number=0,
 )
 print(evaluation.status)  # DirectorStatus.PASS
+```
+
+### DirectorLLM (Phase 2.2)
+LLMを使用した5軸評価Director:
+```python
+from duo_talk_director import DirectorLLM
+
+# LLMクライアントが必要
+from duo_talk_core.llm_client import create_client
+client = create_client(backend="ollama", model="gemma3:12b")
+
+director = DirectorLLM(client)
+evaluation = director.evaluate_response(
+    speaker="やな",
+    response="Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",
+    topic="テスト",
+    history=[],
+    turn_number=0,
+)
+print(evaluation.status)  # DirectorStatus.PASS
+```
+
+### DirectorHybrid (Phase 2.2 推奨)
+静的チェック + LLM評価のハイブリッド方式:
+```python
+from duo_talk_director import DirectorHybrid
+
+from duo_talk_core.llm_client import create_client
+client = create_client(backend="ollama", model="gemma3:12b")
+
+# 静的チェックでRETRYならLLMをスキップ（高速化）
+director = DirectorHybrid(client, skip_llm_on_static_retry=True)
+```
+
+### 5軸評価メトリクス
+
+| メトリクス | 説明 | 重み |
+|-----------|------|------|
+| character_consistency | キャラクター一貫性 | 0.25 |
+| topic_novelty | 話題の新規性 | 0.20 |
+| relationship_quality | 姉妹関係性 | 0.25 |
+| naturalness | 対話の自然さ | 0.15 |
+| concreteness | 情報の具体性 | 0.15 |
+
+### 閾値設定
+
+```python
+from duo_talk_director import ThresholdConfig
+
+config = ThresholdConfig(
+    retry_overall=0.4,      # overall < 0.4 → RETRY
+    retry_character=0.3,    # character_consistency < 0.3 → RETRY
+    retry_relationship=0.3, # relationship_quality < 0.3 → RETRY
+    warn_overall=0.6,       # overall < 0.6 → WARN
+)
+director = DirectorHybrid(client, threshold_config=config)
 ```
 
 ### 静的チェッカー
@@ -147,14 +212,16 @@ python -m pytest tests/ -v --cov=src/duo_talk_director --cov-report=term-missing
 
 ## Next Steps
 
-### Phase 2.1 (現在完了)
+### Phase 2.1 (完了)
 - ✅ DirectorMinimal実装
 - ✅ 4つの静的チェッカー
 - ✅ テスト96%カバレッジ
 
-### Phase 2.2 (計画中)
-- Director: LLMベースの5軸評価スコアリング
-- より高度な品質判定
+### Phase 2.2 (完了)
+- ✅ DirectorLLM: LLMベースの5軸評価スコアリング
+- ✅ DirectorHybrid: 静的チェック + LLM評価のハイブリッド方式
+- ✅ ThresholdConfig: 閾値設定による判定
+- ✅ テスト190件、カバレッジ94%
 
 ### Phase 2.3 (計画中)
 - DirectorWithNovelty: 話題ループ検出
