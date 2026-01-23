@@ -95,8 +95,8 @@ class TestDirectorMinimal:
     ):
         """Setting-breaking response should RETRY"""
         # Use yana_good_response style but with setting-breaking content
-        # Must pass tone_check first to reach setting_check
-        response = "えー、実家ではよくお茶を飲んでたよね～"
+        # Must pass thought_check and tone_check first to reach setting_check
+        response = "Thought: (昔のことを思い出す)\nOutput: えー、実家ではよくお茶を飲んでたよね～"
         result = director.evaluate_response(
             speaker=yana_speaker,
             response=response,
@@ -136,12 +136,14 @@ class TestDirectorMinimal:
     ):
         """Warnings should be collected but not block PASS/WARN"""
         # Create a response that's medium length but otherwise okay for Ayu
+        # Include Thought/Output format
         lines = [
-            "一般的に言えば、",
+            "Thought: (順を追って説明しよう)",
+            "Output: 一般的に言えば、",
             "これはつまり、",
             "推奨される方法ですね。",
             "そうですよ。",
-            "はい、そうです。",
+            "はい、そうですね。",
             "確かにそうですね。",
         ]
         response = "\n".join(lines)
@@ -153,7 +155,7 @@ class TestDirectorMinimal:
             history=sample_history,
             turn_number=3,
         )
-        # Should be WARN (not RETRY) because format is 6 lines
+        # Should be WARN (not RETRY) because format is 6+ lines
         assert result.status == DirectorStatus.WARN
         assert "format_check" in result.checks_passed
 
@@ -164,9 +166,9 @@ class TestDirectorMinimal:
         sample_history: list[dict],
     ):
         """First RETRY should stop further checks"""
-        # Response that passes tone/praise but fails setting_check
+        # Response that passes thought/tone/praise but fails setting_check
         # Also has a long format (8+ lines), but should stop at setting_check
-        response = "えー、また遊びに来てね～！すっごいじゃん！"
+        response = "Thought: (また来てほしいな)\nOutput: えー、また遊びに来てね～！すっごいじゃん！"
 
         result = director.evaluate_response(
             speaker=yana_speaker,
@@ -177,7 +179,7 @@ class TestDirectorMinimal:
         )
 
         assert result.status == DirectorStatus.RETRY
-        # Should pass tone_check, praise_check, then fail setting_check
+        # Should pass thought_check, tone_check, praise_check, then fail setting_check
         assert "setting_check" in result.checks_failed
         # format_check should not be checked since we stopped at setting_check
         assert "format_check" not in result.checks_passed
@@ -233,7 +235,7 @@ class TestDirectorMinimal:
         topic = "AIの話"
 
         # Turn 1: やな starts
-        response1 = "えー、AIの話？すっごい面白そうじゃん！"
+        response1 = "Thought: (AIの話って面白そう！)\nOutput: えー、AIの話？すっごい面白そうじゃん！"
         result1 = director.evaluate_response(
             speaker="やな",
             response=response1,
@@ -245,7 +247,7 @@ class TestDirectorMinimal:
         history.append({"speaker": "やな", "content": response1})
 
         # Turn 2: あゆ responds (with more polite markers)
-        response2 = "姉様、一般的に言えば、AIは様々な分野で使われていますね。推奨されるのはですね、機械学習ですよ。"
+        response2 = "Thought: (姉様に説明しよう)\nOutput: 姉様、一般的に言えば、AIは様々な分野で使われていますね。推奨されるのは機械学習ですよ。"
         result2 = director.evaluate_response(
             speaker="あゆ",
             response=response2,
@@ -258,7 +260,7 @@ class TestDirectorMinimal:
         history.append({"speaker": "あゆ", "content": response2})
 
         # Turn 3: やな continues (with more markers for score >= 2)
-        response3 = "そっか～、あゆはほんと詳しいね！すっごいじゃん！"
+        response3 = "Thought: (あゆ詳しいな～)\nOutput: そっか～、あゆはほんと詳しいね！すっごいじゃん！"
         result3 = director.evaluate_response(
             speaker="やな",
             response=response3,
@@ -274,10 +276,10 @@ class TestDirectorMinimal:
         sample_history: list[dict],
     ):
         """RETRY reason should explain what went wrong (v2.1 violation-based)"""
-        # Bad tone for やな (uses forbidden endings です/ます)
+        # Bad tone for やな (uses forbidden endings です/ます) with Thought/Output
         result = director.evaluate_response(
             speaker="やな",
-            response="わかりました。了解です。",
+            response="Thought: (了解した)\nOutput: わかりました。了解です。",
             topic="テスト",
             history=sample_history,
             turn_number=2,
@@ -313,7 +315,7 @@ class TestDirectorProtocolCompliance:
         director = DirectorMinimal()
         result = director.evaluate_response(
             speaker="やな",
-            response="えー、すっごいじゃん！",
+            response="Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",
             topic="test",
             history=[],
             turn_number=0,

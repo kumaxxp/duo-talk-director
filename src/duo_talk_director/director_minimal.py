@@ -4,11 +4,12 @@ A lightweight Director implementation that uses only static pattern matching.
 No LLM calls, zero latency impact.
 
 Checks performed:
-1. Tone markers (character speech patterns)
-2. Praise words (Ayu only)
-3. Context consistency (hallucination detection)
-4. Setting consistency (sisters live together)
-5. Format (response length)
+1. Thought structure (presence, content, completeness)
+2. Tone markers (character speech patterns)
+3. Praise words (Ayu only)
+4. Context consistency (hallucination detection)
+5. Setting consistency (sisters live together)
+6. Format (response length)
 """
 
 from .interfaces import (
@@ -22,6 +23,7 @@ from .checks import (
     SettingChecker,
     FormatChecker,
     ContextChecker,
+    ThoughtChecker,
 )
 
 
@@ -38,6 +40,7 @@ class DirectorMinimal(DirectorProtocol):
     """
 
     def __init__(self):
+        self.thought_checker = ThoughtChecker()
         self.tone_checker = ToneChecker()
         self.praise_checker = PraiseChecker()
         self.context_checker = ContextChecker()
@@ -68,7 +71,22 @@ class DirectorMinimal(DirectorProtocol):
         checks_failed = []
         warnings = []
 
-        # 1. Tone markers check
+        # 1. Thought structure check
+        thought_result = self.thought_checker.check(response)
+        if thought_result.status == DirectorStatus.RETRY:
+            checks_failed.append(thought_result.name)
+            return DirectorEvaluation(
+                status=DirectorStatus.RETRY,
+                reason=thought_result.reason,
+                suggestion=thought_result.details.get("suggestion"),
+                checks_passed=checks_passed,
+                checks_failed=checks_failed,
+            )
+        elif thought_result.status == DirectorStatus.WARN:
+            warnings.append(thought_result.reason)
+        checks_passed.append(thought_result.name)
+
+        # 2. Tone markers check
         tone_result = self.tone_checker.check(speaker, response)
         if tone_result.status == DirectorStatus.RETRY:
             checks_failed.append(tone_result.name)
@@ -83,7 +101,7 @@ class DirectorMinimal(DirectorProtocol):
             warnings.append(tone_result.reason)
         checks_passed.append(tone_result.name)
 
-        # 2. Praise words check (Ayu only)
+        # 3. Praise words check (Ayu only)
         praise_result = self.praise_checker.check(speaker, response)
         if praise_result.status == DirectorStatus.RETRY:
             checks_failed.append(praise_result.name)
@@ -98,7 +116,7 @@ class DirectorMinimal(DirectorProtocol):
             warnings.append(praise_result.reason)
         checks_passed.append(praise_result.name)
 
-        # 3. Context consistency check (hallucination detection)
+        # 4. Context consistency check (hallucination detection)
         context_result = self.context_checker.check(speaker, response, history)
         if context_result.status == DirectorStatus.RETRY:
             checks_failed.append(context_result.name)
@@ -111,7 +129,7 @@ class DirectorMinimal(DirectorProtocol):
             )
         checks_passed.append(context_result.name)
 
-        # 4. Setting consistency check
+        # 5. Setting consistency check
         setting_result = self.setting_checker.check(response)
         if setting_result.status == DirectorStatus.RETRY:
             checks_failed.append(setting_result.name)
@@ -124,7 +142,7 @@ class DirectorMinimal(DirectorProtocol):
             )
         checks_passed.append(setting_result.name)
 
-        # 5. Format check
+        # 6. Format check
         format_result = self.format_checker.check(response)
         if format_result.status == DirectorStatus.RETRY:
             checks_failed.append(format_result.name)

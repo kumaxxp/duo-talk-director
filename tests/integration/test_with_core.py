@@ -34,7 +34,7 @@ class TestDirectorIntegrationWithCore:
         # Test evaluate_response signature
         result = director.evaluate_response(
             speaker="やな",
-            response="えー、すっごいじゃん！",
+            response="Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -48,7 +48,7 @@ class TestDirectorIntegrationWithCore:
         # duo-talk-core checks status as string
         result = director.evaluate_response(
             speaker="やな",
-            response="えー、すっごいじゃん！",
+            response="Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -61,7 +61,7 @@ class TestDirectorIntegrationWithCore:
         # Response with bad tone should trigger RETRY
         result = director.evaluate_response(
             speaker="やな",
-            response="わかりました。了解です。",
+            response="Thought: (了解した)\nOutput: わかりました。了解です。",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -74,7 +74,7 @@ class TestDirectorIntegrationWithCore:
         # Response with excessive exclamation marks (>3) causes WARN
         result = director.evaluate_response(
             speaker="やな",
-            response="すごい！やばい！最高！これは！ほんとに！",
+            response="Thought: (盛り上がってきた！)\nOutput: すごい！やばい！最高！これは！ほんとに！",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -110,9 +110,9 @@ class TestDirectorWithMockedDialogueManager:
         """Simulate DialogueManager retry loop with Director (v2.1 violation-based)"""
         max_retries = 3
         responses = [
-            "わかりました。了解です。",  # RETRY (v2.1: forbidden ending ます/です)
-            "そうですね。理解しています。",  # RETRY (v2.1: forbidden ending です/ます)
-            "えー、すっごいじゃん！",  # PASS (no violations)
+            "Thought: (了解した)\nOutput: わかりました。了解です。",  # RETRY (forbidden ending)
+            "Thought: (わかった)\nOutput: そうですね。理解しています。",  # RETRY (forbidden ending)
+            "Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",  # PASS (no violations)
         ]
 
         accepted_response = None
@@ -134,14 +134,14 @@ class TestDirectorWithMockedDialogueManager:
 
         # Should have retried twice and accepted the third response
         assert retry_count == 2
-        assert accepted_response == "えー、すっごいじゃん！"
+        assert accepted_response == "Thought: (楽しそう)\nOutput: えー、すっごいじゃん！"
 
     def test_session_reset(self, director: DirectorMinimal):
         """Test that reset_for_new_session works"""
         # Run some evaluations
         director.evaluate_response(
             speaker="やな",
-            response="えー、すっごいじゃん！",
+            response="Thought: (楽しそう)\nOutput: えー、すっごいじゃん！",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -155,7 +155,7 @@ class TestDirectorWithMockedDialogueManager:
         history: list[dict] = []
 
         # Turn 0: やな
-        response0 = "えー、AIの話？すっごい面白そうじゃん！"
+        response0 = "Thought: (AIの話面白そう)\nOutput: えー、AIの話？すっごい面白そうじゃん！"
         result0 = director.evaluate_response(
             speaker="やな",
             response=response0,
@@ -168,7 +168,7 @@ class TestDirectorWithMockedDialogueManager:
         history.append({"speaker": "やな", "content": response0})
 
         # Turn 1: あゆ
-        response1 = "姉様、一般的に言えば、AIは様々な分野で推奨されていますね。"
+        response1 = "Thought: (姉様に説明しよう)\nOutput: 姉様、一般的に言えば、AIは様々な分野で推奨されていますね。"
         result1 = director.evaluate_response(
             speaker="あゆ",
             response=response1,
@@ -183,7 +183,7 @@ class TestDirectorWithMockedDialogueManager:
         """Test that Ayu's inappropriate praise is rejected"""
         result = director.evaluate_response(
             speaker="あゆ",
-            response="さすがですね、あなたの考えは素晴らしいです。",
+            response="Thought: (すごいと思う)\nOutput: さすがですね、あなたの考えは素晴らしいです。",
             topic="テスト",
             history=[],
             turn_number=0,
@@ -195,7 +195,7 @@ class TestDirectorWithMockedDialogueManager:
         """Test that setting violations are rejected"""
         result = director.evaluate_response(
             speaker="やな",
-            response="えー、実家ではよく～だったよね！すっごいじゃん！",
+            response="Thought: (昔を思い出す)\nOutput: えー、実家ではよく～だったよね！すっごいじゃん！",
             topic="テスト",
             history=[],
             turn_number=0,
