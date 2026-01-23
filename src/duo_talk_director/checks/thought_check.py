@@ -49,13 +49,17 @@ class ThoughtChecker:
         re.compile(r"Thought:\s*\([A-Za-zやなあゆ]+:\s*$", re.IGNORECASE),  # "Thought: (Yana:" at end
     ]
 
-    def __init__(self, min_thought_length: int = 3):
+    def __init__(self, min_thought_length: int = 3, strict_mode: bool = True):
         """Initialize ThoughtChecker
 
         Args:
             min_thought_length: Minimum characters for valid Thought content
+            strict_mode: If True (default), empty/truncated Thought triggers RETRY.
+                        If False (v2.2 relaxed mode), empty/truncated Thought triggers WARN.
+                        Missing Thought marker always triggers RETRY.
         """
         self.min_thought_length = min_thought_length
+        self.strict_mode = strict_mode
 
     def check(self, response: str) -> CheckResult:
         """Check Thought validity in response
@@ -83,31 +87,59 @@ class ThoughtChecker:
 
         # Case 2: Empty Thought
         if validation.is_empty:
-            return CheckResult(
-                name="thought_check",
-                passed=False,
-                status=DirectorStatus.RETRY,
-                reason="Thoughtの内容が空です。キャラクターの内面の思考を記述してください。",
-                details={
-                    "error_type": "empty_thought",
-                    "thought_content": validation.thought_content,
-                    "suggestion": "Thought: (内面の思考) の形式で思考を出力してください。",
-                },
-            )
+            if self.strict_mode:
+                return CheckResult(
+                    name="thought_check",
+                    passed=False,
+                    status=DirectorStatus.RETRY,
+                    reason="Thoughtの内容が空です。キャラクターの内面の思考を記述してください。",
+                    details={
+                        "error_type": "empty_thought",
+                        "thought_content": validation.thought_content,
+                        "suggestion": "Thought: (内面の思考) の形式で思考を出力してください。",
+                    },
+                )
+            else:
+                # v2.2 relaxed mode: WARN instead of RETRY
+                return CheckResult(
+                    name="thought_check",
+                    passed=True,  # WARN is passing
+                    status=DirectorStatus.WARN,
+                    reason="Thoughtの内容が空です（警告のみ）",
+                    details={
+                        "error_type": "empty_thought",
+                        "thought_content": validation.thought_content,
+                        "relaxed_mode": True,
+                    },
+                )
 
         # Case 3: Truncated Thought
         if validation.is_truncated:
-            return CheckResult(
-                name="thought_check",
-                passed=False,
-                status=DirectorStatus.RETRY,
-                reason="Thoughtが途中で切れています（incomplete）。完全な思考を出力してください。",
-                details={
-                    "error_type": "truncated_thought",
-                    "thought_content": validation.thought_content,
-                    "suggestion": "Thoughtは完全な文で終わるようにしてください。",
-                },
-            )
+            if self.strict_mode:
+                return CheckResult(
+                    name="thought_check",
+                    passed=False,
+                    status=DirectorStatus.RETRY,
+                    reason="Thoughtが途中で切れています（incomplete）。完全な思考を出力してください。",
+                    details={
+                        "error_type": "truncated_thought",
+                        "thought_content": validation.thought_content,
+                        "suggestion": "Thoughtは完全な文で終わるようにしてください。",
+                    },
+                )
+            else:
+                # v2.2 relaxed mode: WARN instead of RETRY
+                return CheckResult(
+                    name="thought_check",
+                    passed=True,  # WARN is passing
+                    status=DirectorStatus.WARN,
+                    reason="Thoughtが途中で切れています（警告のみ）",
+                    details={
+                        "error_type": "truncated_thought",
+                        "thought_content": validation.thought_content,
+                        "relaxed_mode": True,
+                    },
+                )
 
         # Case 4: Missing Output
         if not validation.has_output:

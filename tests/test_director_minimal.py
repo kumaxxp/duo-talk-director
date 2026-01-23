@@ -322,3 +322,106 @@ class TestDirectorProtocolCompliance:
         )
         assert isinstance(result, DirectorEvaluation)
         assert isinstance(result.status, DirectorStatus)
+
+
+class TestDirectorMinimalV22Mode:
+    """v2.2 Relaxed Mode Tests
+
+    v2.2 changes:
+    - strict_thought_check=False by default
+    - Empty Thought: WARN instead of RETRY
+    - Missing Thought marker: Still RETRY
+    """
+
+    @pytest.fixture
+    def relaxed_director(self) -> DirectorMinimal:
+        """v2.2 default (relaxed mode)"""
+        return DirectorMinimal(strict_thought_check=False)
+
+    @pytest.fixture
+    def strict_director(self) -> DirectorMinimal:
+        """Strict mode for comparison"""
+        return DirectorMinimal(strict_thought_check=True)
+
+    def test_default_is_relaxed_mode(self):
+        """Default DirectorMinimal should use relaxed mode"""
+        director = DirectorMinimal()
+        assert director.strict_thought_check is False
+
+    def test_empty_thought_warns_in_relaxed_mode(self, relaxed_director: DirectorMinimal):
+        """Empty Thought should WARN (not RETRY) in v2.2 default mode"""
+        result = relaxed_director.evaluate_response(
+            speaker="やな",
+            response="Thought: (\nOutput: (笑顔で) 「おはよう！」",
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+        # v2.2: Empty Thought is WARN, not RETRY
+        assert result.status == DirectorStatus.WARN
+        assert "thought_check" in result.checks_passed
+
+    def test_empty_thought_retries_in_strict_mode(self, strict_director: DirectorMinimal):
+        """Empty Thought should RETRY in strict mode"""
+        result = strict_director.evaluate_response(
+            speaker="やな",
+            response="Thought: (\nOutput: (笑顔で) 「おはよう！」",
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+        # Strict mode: Empty Thought is RETRY
+        assert result.status == DirectorStatus.RETRY
+        assert "thought_check" in result.checks_failed
+
+    def test_missing_thought_still_retries_in_relaxed_mode(self, relaxed_director: DirectorMinimal):
+        """Missing Thought marker should still RETRY even in relaxed mode"""
+        result = relaxed_director.evaluate_response(
+            speaker="やな",
+            response="(笑顔で) 「おはよう！」",
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+        # Missing Thought marker is always RETRY (format error)
+        assert result.status == DirectorStatus.RETRY
+        assert "thought_check" in result.checks_failed
+
+    def test_valid_thought_passes_in_relaxed_mode(self, relaxed_director: DirectorMinimal):
+        """Valid Thought should PASS in relaxed mode"""
+        result = relaxed_director.evaluate_response(
+            speaker="やな",
+            response="Thought: (あゆと話せて嬉しいな)\nOutput: えー、すっごいじゃん！",
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+        assert result.status == DirectorStatus.PASS
+        assert "thought_check" in result.checks_passed
+
+    def test_relaxed_mode_reduces_retries_for_empty_thought(self):
+        """v2.2 relaxed mode should reduce retries vs strict mode"""
+        relaxed = DirectorMinimal(strict_thought_check=False)
+        strict = DirectorMinimal(strict_thought_check=True)
+
+        empty_thought_response = "Thought: ()\nOutput: 「おはよう」"
+
+        relaxed_result = relaxed.evaluate_response(
+            speaker="やな",
+            response=empty_thought_response,
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+
+        strict_result = strict.evaluate_response(
+            speaker="やな",
+            response=empty_thought_response,
+            topic="テスト",
+            history=[],
+            turn_number=0,
+        )
+
+        # Relaxed: WARN (passes), Strict: RETRY (fails)
+        assert relaxed_result.status == DirectorStatus.WARN
+        assert strict_result.status == DirectorStatus.RETRY

@@ -175,6 +175,86 @@ class TestThoughtCheckerMinLength:
         assert result.passed is True
 
 
+class TestThoughtCheckerV22Relaxed:
+    """v2.2 Relaxed Mode: Empty Thought becomes WARN instead of RETRY
+
+    The improvement spec v2.2 changes:
+    - If Thought: marker exists, accept even if content is empty
+    - Empty Thought: WARN (not RETRY) to reduce retry cost
+    - Missing Thought: Still RETRY (format error)
+    """
+
+    @pytest.fixture
+    def relaxed_checker(self):
+        """v2.2 relaxed mode checker"""
+        return ThoughtChecker(strict_mode=False)
+
+    @pytest.fixture
+    def strict_checker(self):
+        """Default strict mode checker"""
+        return ThoughtChecker(strict_mode=True)
+
+    def test_empty_thought_warns_in_relaxed_mode(self, relaxed_checker):
+        """Empty Thought with marker should WARN (not RETRY) in relaxed mode"""
+        response = "Thought: (\nOutput: (笑顔で) 「おはよう！」"
+        result = relaxed_checker.check(response)
+        # v2.2: Has Thought marker, so WARN instead of RETRY
+        assert result.status == DirectorStatus.WARN
+        assert result.passed is True  # WARN is passing
+
+    def test_empty_thought_retries_in_strict_mode(self, strict_checker):
+        """Empty Thought still RETRY in strict mode (default)"""
+        response = "Thought: (\nOutput: (笑顔で) 「おはよう！」"
+        result = strict_checker.check(response)
+        # Strict mode: Empty Thought is RETRY
+        assert result.status == DirectorStatus.RETRY
+        assert result.passed is False
+
+    def test_whitespace_thought_warns_in_relaxed_mode(self, relaxed_checker):
+        """Whitespace-only Thought should WARN in relaxed mode"""
+        response = "Thought:    \nOutput: (笑顔で) 「おはよう！」"
+        result = relaxed_checker.check(response)
+        assert result.status == DirectorStatus.WARN
+        assert result.passed is True
+
+    def test_empty_parenthesis_warns_in_relaxed_mode(self, relaxed_checker):
+        """'Thought: ()' should WARN in relaxed mode"""
+        response = "Thought: ()\nOutput: 「おはよう」"
+        result = relaxed_checker.check(response)
+        assert result.status == DirectorStatus.WARN
+        assert result.passed is True
+
+    def test_missing_thought_still_retries_in_relaxed_mode(self, relaxed_checker):
+        """Missing Thought marker should still RETRY even in relaxed mode"""
+        response = "(笑顔で) 「おはよう！」"
+        result = relaxed_checker.check(response)
+        # No Thought marker at all - this is a format error, still RETRY
+        assert result.status == DirectorStatus.RETRY
+        assert result.passed is False
+
+    def test_valid_thought_passes_in_relaxed_mode(self, relaxed_checker):
+        """Valid Thought should PASS in relaxed mode"""
+        response = "Thought: (Yana: あゆも起きてるかな？)\nOutput: 「おはよう！」"
+        result = relaxed_checker.check(response)
+        assert result.status == DirectorStatus.PASS
+        assert result.passed is True
+
+    def test_real_example_empty_thought_v22(self, relaxed_checker):
+        """Real example: Empty Thought should WARN in v2.2"""
+        response = 'Thought: (\nOutput: (目をキラキラさせて) 「プロジェクトね！」'
+        result = relaxed_checker.check(response)
+        # v2.2: Has Thought marker, so WARN
+        assert result.status == DirectorStatus.WARN
+
+    def test_speaker_prefix_only_warns_in_relaxed_mode(self, relaxed_checker):
+        """Thought with only speaker prefix should WARN in relaxed mode"""
+        response = "Thought: (Yana:\nOutput: 「おはよう」"
+        result = relaxed_checker.check(response)
+        # Has Thought marker but truncated - WARN in relaxed mode
+        assert result.status == DirectorStatus.WARN
+        assert result.passed is True
+
+
 class TestThoughtCheckerRealExamples:
     """Test with real examples from experiment data"""
 

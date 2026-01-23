@@ -10,6 +10,11 @@ Checks performed:
 4. Context consistency (hallucination detection)
 5. Setting consistency (sisters live together)
 6. Format (response length)
+
+v2.2 Changes:
+- Relaxed Thought checking by default (strict_thought_check=False)
+- Empty Thought: WARN instead of RETRY (reduces retry cost by ~96%)
+- Missing Thought marker: Still RETRY (format error)
 """
 
 from .interfaces import (
@@ -37,10 +42,20 @@ class DirectorMinimal(DirectorProtocol):
     - Response format
 
     No LLM calls, designed for low-latency quality control.
+
+    v2.2: Relaxed Thought checking by default to reduce retry costs.
     """
 
-    def __init__(self):
-        self.thought_checker = ThoughtChecker()
+    def __init__(self, strict_thought_check: bool = False):
+        """Initialize DirectorMinimal
+
+        Args:
+            strict_thought_check: If True, empty Thought triggers RETRY.
+                                 If False (default, v2.2), empty Thought triggers WARN.
+                                 Missing Thought marker always triggers RETRY.
+        """
+        self.strict_thought_check = strict_thought_check
+        self.thought_checker = ThoughtChecker(strict_mode=strict_thought_check)
         self.tone_checker = ToneChecker()
         self.praise_checker = PraiseChecker()
         self.context_checker = ContextChecker()
