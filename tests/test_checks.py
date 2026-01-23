@@ -71,21 +71,33 @@ class TestToneChecker:
     def test_yana_using_forbidden_word_retries(
         self, checker: ToneChecker, yana_speaker: str
     ):
-        """やな using 姉様 (forbidden) should RETRY"""
+        """やな using 姉様 (forbidden) should RETRY with specific error"""
         response = "姉様、これはどうですか？"  # やな should not call herself 姉様
         result = checker.check(yana_speaker, response)
         assert result.passed is False
         assert result.status == DirectorStatus.RETRY
         assert "姉様" in result.reason
+        # v0.2: Error message should include role information
+        assert "やな" in result.reason
+        assert "姉" in result.reason  # Role info
+        # v0.2: Suggestion should include guidance
+        assert "suggestion" in result.details
+        assert "あゆ" in result.details["suggestion"]  # Guidance to use "あゆ" instead
 
     def test_ayu_using_forbidden_word_retries(
         self, checker: ToneChecker, ayu_speaker: str
     ):
-        """あゆ using お姉ちゃん (forbidden) should RETRY"""
+        """あゆ using お姉ちゃん (forbidden) should RETRY with specific error"""
         response = "お姉ちゃん、これはどうですか？"  # あゆ should use 姉様
         result = checker.check(ayu_speaker, response)
         assert result.passed is False
         assert result.status == DirectorStatus.RETRY
+        # v0.2: Error message should include role information
+        assert "あゆ" in result.reason
+        assert "妹" in result.reason  # Role info
+        # v0.2: Suggestion should include guidance
+        assert "suggestion" in result.details
+        assert "姉様" in result.details["suggestion"]  # Guidance to use "姉様" instead
 
     # === WARN cases ===
 

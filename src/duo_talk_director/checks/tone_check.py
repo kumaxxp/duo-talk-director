@@ -37,6 +37,44 @@ AYU_MARKERS = ToneMarkers(
     forbidden_words=["姉上", "お姉ちゃん"],  # Wrong ways to call Yana
 )
 
+# Role information for error messages
+ROLE_INFO = {
+    "やな": {
+        "role": "姉 (Elder Sister)",
+        "calls_partner": "あゆ",
+        "partner_calls_me": "姉様",
+        "forbidden_guidance": {
+            "姉様": "「姉様」はあゆが姉のやなを呼ぶ言葉です。やなは妹を「あゆ」と呼んでください。",
+        },
+    },
+    "あゆ": {
+        "role": "妹 (Younger Sister)",
+        "calls_partner": "姉様",
+        "partner_calls_me": "あゆ",
+        "forbidden_guidance": {
+            "姉上": "「姉上」ではなく「姉様」を使ってください。",
+            "お姉ちゃん": "「お姉ちゃん」ではなく「姉様」を使ってください。",
+        },
+    },
+    "A": {
+        "role": "姉 (Elder Sister)",
+        "calls_partner": "あゆ",
+        "partner_calls_me": "姉様",
+        "forbidden_guidance": {
+            "姉様": "「姉様」はあゆが姉のやなを呼ぶ言葉です。やなは妹を「あゆ」と呼んでください。",
+        },
+    },
+    "B": {
+        "role": "妹 (Younger Sister)",
+        "calls_partner": "姉様",
+        "partner_calls_me": "あゆ",
+        "forbidden_guidance": {
+            "姉上": "「姉上」ではなく「姉様」を使ってください。",
+            "お姉ちゃん": "「お姉ちゃん」ではなく「姉様」を使ってください。",
+        },
+    },
+}
+
 
 class ToneChecker:
     """Check tone markers for character consistency"""
@@ -76,12 +114,20 @@ class ToneChecker:
         # Check forbidden words first
         for word in tone_markers.forbidden_words:
             if word in normalized:
+                role_info = ROLE_INFO.get(speaker, {})
+                role = role_info.get("role", speaker)
+                guidance = role_info.get("forbidden_guidance", {}).get(
+                    word, f"「{word}」は使用禁止です。"
+                )
                 return CheckResult(
                     name="tone_check",
                     passed=False,
                     status=DirectorStatus.RETRY,
-                    reason=f"禁止ワード「{word}」を使用",
-                    details={"forbidden_word": word},
+                    reason=f"役割違反: あなたは「{speaker}」（{role}）です。禁止ワード「{word}」を使用しました。",
+                    details={
+                        "forbidden_word": word,
+                        "suggestion": guidance,
+                    },
                 )
 
         # Calculate tone score

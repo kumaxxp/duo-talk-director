@@ -6,8 +6,9 @@ No LLM calls, zero latency impact.
 Checks performed:
 1. Tone markers (character speech patterns)
 2. Praise words (Ayu only)
-3. Setting consistency (sisters live together)
-4. Format (response length)
+3. Context consistency (hallucination detection)
+4. Setting consistency (sisters live together)
+5. Format (response length)
 """
 
 from .interfaces import (
@@ -20,6 +21,7 @@ from .checks import (
     PraiseChecker,
     SettingChecker,
     FormatChecker,
+    ContextChecker,
 )
 
 
@@ -38,6 +40,7 @@ class DirectorMinimal(DirectorProtocol):
     def __init__(self):
         self.tone_checker = ToneChecker()
         self.praise_checker = PraiseChecker()
+        self.context_checker = ContextChecker()
         self.setting_checker = SettingChecker()
         self.format_checker = FormatChecker()
 
@@ -55,7 +58,7 @@ class DirectorMinimal(DirectorProtocol):
             speaker: Character name ("やな" or "あゆ")
             response: Generated response text
             topic: Conversation topic (unused in minimal)
-            history: Conversation history (unused in minimal)
+            history: Conversation history (used for context check)
             turn_number: Turn number (unused in minimal)
 
         Returns:
@@ -95,7 +98,20 @@ class DirectorMinimal(DirectorProtocol):
             warnings.append(praise_result.reason)
         checks_passed.append(praise_result.name)
 
-        # 3. Setting consistency check
+        # 3. Context consistency check (hallucination detection)
+        context_result = self.context_checker.check(speaker, response, history)
+        if context_result.status == DirectorStatus.RETRY:
+            checks_failed.append(context_result.name)
+            return DirectorEvaluation(
+                status=DirectorStatus.RETRY,
+                reason=context_result.reason,
+                suggestion=context_result.details.get("suggestion"),
+                checks_passed=checks_passed,
+                checks_failed=checks_failed,
+            )
+        checks_passed.append(context_result.name)
+
+        # 4. Setting consistency check
         setting_result = self.setting_checker.check(response)
         if setting_result.status == DirectorStatus.RETRY:
             checks_failed.append(setting_result.name)
@@ -108,7 +124,7 @@ class DirectorMinimal(DirectorProtocol):
             )
         checks_passed.append(setting_result.name)
 
-        # 4. Format check
+        # 5. Format check
         format_result = self.format_checker.check(response)
         if format_result.status == DirectorStatus.RETRY:
             checks_failed.append(format_result.name)
