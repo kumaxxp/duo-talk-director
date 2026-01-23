@@ -5,17 +5,29 @@ Evaluates dialogue quality using LLM scoring on 5 axes.
 
 import json
 import re
-from typing import Protocol, Optional
+from dataclasses import dataclass, field
+from typing import Protocol, Optional, Any
 
 from ..interfaces import LLMEvaluationScore
 from .prompts import build_evaluation_prompt
 
 
-class EvaluatorLLMClient(Protocol):
-    """Protocol for LLM client used by evaluator"""
+@dataclass
+class EvaluatorGenerationConfig:
+    """Generation config for evaluator (compatible with duo-talk-core)"""
+    temperature: float = 0.3  # Lower temperature for consistent evaluation
+    max_tokens: int = 500
+    stop_sequences: list[str] = field(default_factory=list)
 
-    def generate(self, prompt: str, max_tokens: int = 500) -> str:
-        """Generate text from prompt"""
+
+class EvaluatorLLMClient(Protocol):
+    """Protocol for LLM client used by evaluator.
+
+    Compatible with duo-talk-core's LLMClient interface.
+    """
+
+    def generate(self, prompt: str, config: Optional[Any] = None) -> str:
+        """Generate text from prompt with optional config"""
         ...
 
     def is_available(self) -> bool:
@@ -68,7 +80,8 @@ class LLMEvaluator:
         )
 
         try:
-            raw_response = self.llm_client.generate(prompt, max_tokens=500)
+            config = EvaluatorGenerationConfig(max_tokens=500, temperature=0.3)
+            raw_response = self.llm_client.generate(prompt, config)
             return self._parse_response(raw_response)
         except Exception as e:
             # Fallback to default scores on error
