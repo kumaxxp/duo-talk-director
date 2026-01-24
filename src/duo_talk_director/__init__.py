@@ -2,6 +2,8 @@
 
 Phase 2 of duo-talk-ecosystem: Optional quality control for duo-talk-core.
 Provides static checks, LLM scoring, and loop detection.
+
+Phase 2.3: Added logging for ActionSanitizer and Thought generation.
 """
 
 from .interfaces import (
@@ -14,8 +16,17 @@ from .director_minimal import DirectorMinimal
 from .director_llm import DirectorLLM
 from .director_hybrid import DirectorHybrid
 from .config.thresholds import ThresholdConfig
+from .logging import (
+    SanitizerLogger,
+    SanitizerLogEntry,
+    ThoughtLogger,
+    ThoughtLogEntry,
+    LogStore,
+    get_log_store,
+    reset_log_store,
+)
 
-__version__ = "2.0.0"  # Phase 2.2: LLM-based Director
+__version__ = "2.3.0"  # Phase 2.3: Logging and mini-benchmark
 __all__ = [
     # Interfaces
     "DirectorStatus",
@@ -28,4 +39,12 @@ __all__ = [
     "DirectorHybrid",
     # Config
     "ThresholdConfig",
+    # Logging (Phase 2.3)
+    "SanitizerLogger",
+    "SanitizerLogEntry",
+    "ThoughtLogger",
+    "ThoughtLogEntry",
+    "LogStore",
+    "get_log_store",
+    "reset_log_store",
 ]

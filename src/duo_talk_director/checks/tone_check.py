@@ -1,9 +1,14 @@
-"""Tone marker check for character speech patterns (v2.1 - Negative Policing)
+"""Tone marker check for character speech patterns (v2.2 - Output-Only Check)
 
 v2.1 Changes:
 - Removed "positive scoring" (requiring markers)
 - Focus on "negative policing" (detecting violations)
 - Neutral responses without violations now PASS
+
+v2.2 Changes:
+- Only check Output section, not Thought section
+- Thought can contain forbidden words (internal observation is allowed)
+- Example: やな thinking "あゆが姉様って呼んでくれた" is valid
 
 Violations detected:
 - やな (Yana): Formal endings (です/ます), 姉様 self-reference, excessive ！
@@ -137,7 +142,9 @@ class ToneChecker:
                 reason="Unknown speaker, skipping check",
             )
 
-        normalized = self._normalize_for_checks(response)
+        # v2.2: Extract only Output portion (exclude Thought)
+        output_only = self._extract_output_only(response)
+        normalized = self._normalize_for_checks(output_only)
 
         # Empty response is OK (no violations possible)
         if not normalized.strip():
@@ -286,6 +293,36 @@ class ToneChecker:
                 },
             )
         return None
+
+    @staticmethod
+    def _extract_output_only(text: str) -> str:
+        """Extract only the Output portion, excluding Thought (v2.2)
+
+        In TWO_PASS mode, responses have format:
+        "Thought: {thought}\nOutput: {output}"
+
+        We should only check the Output part for tone violations.
+        Thought is internal and can contain words that are forbidden in speech.
+        Example: やな thinking "あゆが姉様って呼んでくれた" is valid.
+
+        Args:
+            text: Full response text
+
+        Returns:
+            Output portion only (or full text if no Output marker found)
+        """
+        if not text:
+            return ""
+
+        # Check for Output: marker
+        output_pattern = re.compile(r"Output:\s*(.*)$", re.DOTALL | re.IGNORECASE)
+        match = output_pattern.search(text)
+
+        if match:
+            return match.group(1).strip()
+
+        # No Output marker found, return full text for backward compatibility
+        return text
 
     @staticmethod
     def _normalize_for_checks(text: str) -> str:

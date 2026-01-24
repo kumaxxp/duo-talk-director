@@ -328,25 +328,27 @@ class TestDirectorMinimalV22Mode:
     """v2.2 Relaxed Mode Tests
 
     v2.2 changes:
-    - strict_thought_check=False by default
-    - Empty Thought: WARN instead of RETRY
-    - Missing Thought marker: Still RETRY
+    - strict_thought_check option added
+    - Missing Thought marker: Always RETRY
+
+    v2.3 changes:
+    - strict_thought_check=True by default (empty/malformed Thought triggers RETRY)
     """
 
     @pytest.fixture
     def relaxed_director(self) -> DirectorMinimal:
-        """v2.2 default (relaxed mode)"""
+        """Relaxed mode (WARN for empty Thought)"""
         return DirectorMinimal(strict_thought_check=False)
 
     @pytest.fixture
     def strict_director(self) -> DirectorMinimal:
-        """Strict mode for comparison"""
+        """v2.3 default (strict mode)"""
         return DirectorMinimal(strict_thought_check=True)
 
-    def test_default_is_relaxed_mode(self):
-        """Default DirectorMinimal should use relaxed mode"""
+    def test_default_is_strict_mode(self):
+        """Default DirectorMinimal should use strict mode (v2.3)"""
         director = DirectorMinimal()
-        assert director.strict_thought_check is False
+        assert director.strict_thought_check is True
 
     def test_empty_thought_warns_in_relaxed_mode(self, relaxed_director: DirectorMinimal):
         """Empty Thought should WARN (not RETRY) in v2.2 default mode"""

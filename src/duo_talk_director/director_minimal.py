@@ -12,9 +12,12 @@ Checks performed:
 6. Format (response length)
 
 v2.2 Changes:
-- Relaxed Thought checking by default (strict_thought_check=False)
-- Empty Thought: WARN instead of RETRY (reduces retry cost by ~96%)
-- Missing Thought marker: Still RETRY (format error)
+- Relaxed Thought checking option (strict_thought_check parameter)
+- Missing Thought marker: Always RETRY (format error)
+
+v2.3 Changes:
+- strict_thought_check=True by default (empty Thought triggers RETRY)
+- Ensures malformed Thought like "(" only is properly rejected
 """
 
 from .interfaces import (
@@ -43,15 +46,15 @@ class DirectorMinimal(DirectorProtocol):
 
     No LLM calls, designed for low-latency quality control.
 
-    v2.2: Relaxed Thought checking by default to reduce retry costs.
+    v2.3: strict_thought_check=True by default (empty/malformed Thought triggers RETRY).
     """
 
-    def __init__(self, strict_thought_check: bool = False):
+    def __init__(self, strict_thought_check: bool = True):
         """Initialize DirectorMinimal
 
         Args:
-            strict_thought_check: If True, empty Thought triggers RETRY.
-                                 If False (default, v2.2), empty Thought triggers WARN.
+            strict_thought_check: If True (default, v2.3), empty Thought triggers RETRY.
+                                 If False, empty Thought triggers WARN only.
                                  Missing Thought marker always triggers RETRY.
         """
         self.strict_thought_check = strict_thought_check
