@@ -186,6 +186,7 @@ class RAGLogEntry:
         blocked_props: List of blocked props detected
         facts: List of RAGFactEntry
         latency_ms: Time taken for RAG search in milliseconds
+        would_inject: Whether RAG would inject facts (Phase 3.2 preview)
     """
 
     enabled: bool = True
@@ -193,6 +194,7 @@ class RAGLogEntry:
     blocked_props: list[str] = field(default_factory=list)
     facts: list[RAGFactEntry] = field(default_factory=list)
     latency_ms: float = 0.0
+    would_inject: bool = False  # Phase 3.2 preview: True if injection would trigger
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization"""
@@ -205,6 +207,7 @@ class RAGLogEntry:
                 for f in self.facts
             ],
             "latency_ms": self.latency_ms,
+            "would_inject": self.would_inject,
         }
 
 

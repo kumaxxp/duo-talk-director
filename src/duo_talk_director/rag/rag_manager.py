@@ -29,17 +29,35 @@ class RAGManager:
 
     Provides a single interface for retrieving facts from both
     character rules and session context.
+
+    Phase 3.1 features:
+    - Fact deduplication across session (avoid repeating same facts)
+    - Tag-based limits (max 1 per tag by default)
+    - Trigger-based priority (SCENE first when blocked_props detected)
     """
 
-    def __init__(self, persona_config_path: Optional[Path] = None):
+    # Tag-based limits (max facts per tag per search)
+    DEFAULT_MAX_PER_TAG = {"SCENE": 1, "REL": 1, "STYLE": 1}
+
+    def __init__(
+        self,
+        persona_config_path: Optional[Path] = None,
+        dedupe_enabled: bool = True,
+    ):
         """Initialize RAGManager
 
         Args:
             persona_config_path: Optional path to persona_rules.yaml
+            dedupe_enabled: Enable session-wide fact deduplication
         """
         self.persona_rag = PersonaRAG(config_path=persona_config_path)
         self.session_rag = SessionRAG()
         self._enabled = True
+        self._dedupe_enabled = dedupe_enabled
+        # Fact cache: speaker -> set of fact content hashes
+        self._seen_facts: dict[str, set[str]] = {}
+        # Track triggers for current search
+        self._current_triggers: list[str] = []
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable RAG"""
@@ -62,6 +80,7 @@ class RAGManager:
         speaker: str,
         response_text: str,
         max_facts: int = MAX_FACT_COUNT,
+        force_all: bool = False,
     ) -> RAGResult:
         """Search for relevant facts from both RAG sources
 
@@ -69,11 +88,13 @@ class RAGManager:
             speaker: Current speaker ("やな" or "あゆ")
             response_text: Response text to check for violations
             max_facts: Maximum number of facts to return (default 3)
+            force_all: Bypass deduplication (for debugging)
 
         Returns:
             RAGResult with combined and prioritized facts
         """
         start_time = time.time()
+        self._current_triggers = []
 
         result = RAGResult(
             sources_searched=["persona", "session"],
@@ -82,6 +103,10 @@ class RAGManager:
         if not self._enabled:
             result.query_time_ms = (time.time() - start_time) * 1000
             return result
+
+        # Initialize speaker's seen set if needed
+        if speaker not in self._seen_facts:
+            self._seen_facts[speaker] = set()
 
         # Get facts from both sources
         persona_facts = self.persona_rag.search(
@@ -96,18 +121,115 @@ class RAGManager:
             max_facts=max_facts,
         )
 
+        # Detect triggers
+        blocked_props = self.session_rag.get_blocked_props()
+        has_blocked_prop_violation = any(
+            prop in response_text for prop in blocked_props
+        )
+        if has_blocked_prop_violation:
+            self._current_triggers.append("blocked_props")
+
+        has_prohibited_term = any(
+            "使わない" in f.content for f in persona_facts
+        )
+        if has_prohibited_term:
+            self._current_triggers.append("prohibited_terms")
+
         # Combine and prioritize
         all_facts = persona_facts + session_facts
         all_facts.sort(key=lambda f: (f.priority, -f.confidence))
 
-        # Select top facts up to limit
-        selected_facts = self._deduplicate_and_select(all_facts, max_facts)
+        # Select facts with deduplication and tag limits
+        selected_facts = self._select_with_limits(
+            facts=all_facts,
+            speaker=speaker,
+            max_count=max_facts,
+            force_all=force_all,
+        )
 
         for fact in selected_facts:
             result.add_fact(fact)
 
         result.query_time_ms = (time.time() - start_time) * 1000
         return result
+
+    def _get_fact_tag(self, fact: FactCard) -> str:
+        """Determine tag for a fact based on content"""
+        for pattern, tag in TAG_MAPPING.items():
+            if pattern in fact.content:
+                return tag
+        return "STYLE"  # default
+
+    def _get_fact_id(self, fact: FactCard) -> str:
+        """Generate a unique ID for a fact (for deduplication)"""
+        # Use content hash for deduplication
+        return f"{fact.source}:{hash(fact.content)}"
+
+    def _select_with_limits(
+        self,
+        facts: list[FactCard],
+        speaker: str,
+        max_count: int,
+        force_all: bool = False,
+    ) -> list[FactCard]:
+        """Select facts with tag limits and session deduplication
+
+        Phase 3.1 logic:
+        - Apply tag-based limits (max 1 per tag)
+        - Skip facts already seen in this session (unless triggered)
+        - Prioritize SCENE when blocked_props detected
+        """
+        selected: list[FactCard] = []
+        tag_counts: dict[str, int] = {}
+        seen_contents: set[str] = set()
+
+        # Determine if we should force certain tags
+        force_scene = "blocked_props" in self._current_triggers
+        force_style = "prohibited_terms" in self._current_triggers
+
+        for fact in facts:
+            if len(selected) >= max_count:
+                break
+
+            tag = self._get_fact_tag(fact)
+            fact_id = self._get_fact_id(fact)
+
+            # Check tag limit
+            tag_limit = self.DEFAULT_MAX_PER_TAG.get(tag, 1)
+            if tag_counts.get(tag, 0) >= tag_limit:
+                continue
+
+            # Check content deduplication (within this search)
+            if fact.content in seen_contents:
+                continue
+
+            # Check session deduplication (skip if seen before)
+            if self._dedupe_enabled and not force_all:
+                already_seen = fact_id in self._seen_facts.get(speaker, set())
+
+                # Exception: show again if triggered
+                should_force = False
+                if tag == "SCENE" and force_scene:
+                    should_force = True
+                if tag == "STYLE" and force_style:
+                    should_force = True
+
+                if already_seen and not should_force:
+                    continue
+
+            # Select this fact
+            selected.append(fact)
+            seen_contents.add(fact.content)
+            tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
+            # Mark as seen for this session
+            self._seen_facts[speaker].add(fact_id)
+
+        return selected
+
+    def get_current_triggers(self) -> list[str]:
+        """Get triggers detected in the last search"""
+        return self._current_triggers.copy()
 
     def _deduplicate_and_select(
         self,
@@ -175,6 +297,8 @@ class RAGManager:
     def reset_session(self) -> None:
         """Reset session state (call when starting new conversation)"""
         self.session_rag.reset()
+        self._seen_facts.clear()
+        self._current_triggers.clear()
 
     def to_log_entry(
         self,
@@ -185,30 +309,29 @@ class RAGManager:
 
         Args:
             result: RAGResult from search
-            triggered_by: Optional list of triggers (e.g., ["blocked_props"])
+            triggered_by: Optional list of triggers (overrides auto-detected)
 
         Returns:
             Dictionary suitable for RAGLogEntry
         """
         facts_log = []
         for i, fact in enumerate(result.facts):
-            # Determine tag from content
-            tag = "STYLE"  # default
-            for pattern, tag_name in TAG_MAPPING.items():
-                if pattern in fact.content:
-                    tag = tag_name
-                    break
+            tag = self._get_fact_tag(fact)
+            fact_id = self._get_fact_id(fact)
 
             facts_log.append({
                 "tag": tag,
                 "text": fact.content,
                 "source": fact.source,
-                "id": f"{fact.source}_{i:03d}",
+                "id": fact_id,
             })
+
+        # Use auto-detected triggers if not provided
+        triggers = triggered_by if triggered_by is not None else self._current_triggers
 
         return {
             "enabled": self._enabled,
-            "triggered_by": triggered_by or [],
+            "triggered_by": triggers,
             "blocked_props": self.session_rag.get_blocked_props(),
             "facts": facts_log,
             "latency_ms": result.query_time_ms,

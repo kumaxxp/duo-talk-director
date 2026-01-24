@@ -169,12 +169,20 @@ class DirectorHybrid(DirectorProtocol):
             for f in log_dict["facts"]
         ]
 
+        # Phase 3.2 preview: Determine if injection would trigger
+        unique_triggers = list(set(triggered_by))
+        would_inject = (
+            bool(log_dict["blocked_props"]) or
+            "prohibited_terms" in unique_triggers
+        )
+
         rag_log = RAGLogEntry(
             enabled=True,
-            triggered_by=list(set(triggered_by)),
+            triggered_by=unique_triggers,
             blocked_props=log_dict["blocked_props"],
             facts=facts,
             latency_ms=log_dict["latency_ms"],
+            would_inject=would_inject,
         )
 
         # Track for summary
