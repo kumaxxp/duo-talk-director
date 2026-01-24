@@ -30,6 +30,7 @@ class DirectorEvaluation:
         next_instruction: Instruction to inject for next turn
         checks_passed: List of check names that passed
         checks_failed: List of check names that failed
+        llm_score: Optional LLM evaluation scores (Phase 2.2)
     """
 
     status: DirectorStatus
@@ -39,6 +40,7 @@ class DirectorEvaluation:
     next_instruction: Optional[str] = None
     checks_passed: list[str] = field(default_factory=list)
     checks_failed: list[str] = field(default_factory=list)
+    llm_score: Optional["LLMEvaluationScore"] = None
 
 
 class DirectorProtocol(ABC):

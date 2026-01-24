@@ -27,9 +27,9 @@ class ThoughtChecker:
     """Check Thought presence and validity in responses"""
 
     # Pattern to extract Thought content
-    # Matches: "Thought: ..." until "Output:" or end of string
+    # Matches: "Thought: ..." until "Output:" (newline or space) or end of string
     THOUGHT_PATTERN = re.compile(
-        r"Thought:\s*(.+?)(?=\nOutput:|$)",
+        r"Thought:\s*(.+?)(?=\s*Output:|$)",
         re.DOTALL | re.IGNORECASE
     )
 
@@ -41,6 +41,8 @@ class ThoughtChecker:
         re.compile(r"Thought:\s*\(?\s*\n", re.IGNORECASE),  # "Thought: (\n" or "Thought: \n"
         re.compile(r"Thought:\s*$", re.IGNORECASE),  # "Thought:" at end
         re.compile(r"Thought:\s*\(\s*\n", re.IGNORECASE),  # "Thought: ( \n"
+        re.compile(r"Thought:\s*\(?\s*Output:", re.IGNORECASE),  # "Thought: ( Output:" (no newline)
+        re.compile(r"Thought:\s*\(\s*Output:", re.IGNORECASE),  # "Thought: ( Output:" (no newline)
     ]
 
     # Patterns indicating truncated content (incomplete speaker prefix)

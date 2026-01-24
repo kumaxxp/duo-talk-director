@@ -145,6 +145,7 @@ class DirectorHybrid(DirectorProtocol):
             suggestion=llm.suggestion or static.suggestion,
             checks_passed=checks_passed,
             checks_failed=checks_failed,
+            llm_score=llm.llm_score,
         )
 
     def commit_evaluation(

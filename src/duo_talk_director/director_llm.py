@@ -96,6 +96,7 @@ class DirectorLLM(DirectorProtocol):
                 suggestion=self._build_suggestion(score, status),
                 checks_passed=["llm_evaluation"] if status != DirectorStatus.RETRY else [],
                 checks_failed=["llm_evaluation"] if status == DirectorStatus.RETRY else [],
+                llm_score=score,
             )
 
         except Exception as e:
