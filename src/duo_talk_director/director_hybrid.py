@@ -44,6 +44,7 @@ class DirectorHybrid(DirectorProtocol):
         threshold_config: Optional[ThresholdConfig] = None,
         skip_llm_on_static_retry: bool = True,
         rag_enabled: bool = False,
+        inject_enabled: bool = False,
     ):
         """Initialize DirectorHybrid.
 
@@ -52,11 +53,13 @@ class DirectorHybrid(DirectorProtocol):
             threshold_config: Optional custom threshold configuration
             skip_llm_on_static_retry: Skip LLM when static check returns RETRY
             rag_enabled: Enable RAG logging (Phase 3.1, observe only)
+            inject_enabled: Enable RAG injection (Phase 3.2, inject facts to prompt)
         """
         self.minimal = DirectorMinimal()
         self.llm_director = DirectorLLM(llm_client, threshold_config)
         self.skip_llm_on_static_retry = skip_llm_on_static_retry
         self.rag_enabled = rag_enabled
+        self.inject_enabled = inject_enabled  # Phase 3.2: injection ON/OFF
         self.rag_manager: Optional[RAGManager] = RAGManager() if rag_enabled else None
         self._rag_attempts: list[RAGLogEntry] = []  # Track RAG for all attempts
 
@@ -241,6 +244,66 @@ class DirectorHybrid(DirectorProtocol):
     def clear_rag_attempts(self) -> None:
         """Clear RAG attempts tracking (call after turn completes)"""
         self._rag_attempts.clear()
+
+    def get_facts_for_injection(
+        self,
+        speaker: str,
+        response_text: str = "",
+    ) -> list[dict]:
+        """Get RAG facts for prompt injection (Phase 3.2)
+
+        Searches RAG and returns facts if injection should trigger.
+        Only returns facts when inject_enabled=True and would_inject=True.
+
+        Args:
+            speaker: Character name ("やな" or "あゆ")
+            response_text: Optional response text to check for violations
+
+        Returns:
+            List of fact dicts with format: [{"tag": "SCENE", "text": "..."}]
+            Returns empty list if inject_enabled=False or no injection needed
+        """
+        # Phase 3.2: Only inject if explicitly enabled
+        if not self.inject_enabled:
+            return []
+
+        if not self.rag_enabled or self.rag_manager is None:
+            return []
+
+        # Search RAG
+        result = self.rag_manager.search(speaker, response_text)
+
+        # Check triggers
+        blocked_props = self.rag_manager.session_rag.get_blocked_props()
+        has_blocked_prop = bool(blocked_props)
+        has_prohibited_term = any("使わない" in f.content for f in result.facts)
+
+        # Only inject if triggered
+        would_inject = has_blocked_prop or has_prohibited_term
+        if not would_inject:
+            return []
+
+        # Build fact cards (max 3, priority: SCENE > STYLE > REL)
+        facts_by_tag: dict[str, list[dict]] = {"SCENE": [], "STYLE": [], "REL": []}
+
+        for fact in result.facts:
+            tag = self.rag_manager._get_fact_tag(fact)
+            if tag in facts_by_tag:
+                facts_by_tag[tag].append({"tag": tag, "text": fact.content})
+
+        # Select with priority (max 3 total)
+        selected: list[dict] = []
+        priority_order = ["SCENE", "STYLE", "REL"]
+
+        for tag in priority_order:
+            if len(selected) >= 3:
+                break
+            for fact in facts_by_tag[tag][:1]:  # Max 1 per tag
+                if len(selected) >= 3:
+                    break
+                selected.append(fact)
+
+        return selected
 
     def _merge_results(
         self,
