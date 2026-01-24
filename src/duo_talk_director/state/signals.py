@@ -22,6 +22,7 @@ EMOTION_SIGNALS: dict[EmotionType, list[str]] = {
         "いいな",
         "好き",
         "笑顔",
+        "やった",  # Gap fix: common joy expression
     ],
     EmotionType.WORRY: [
         "心配",
@@ -65,6 +66,8 @@ RELATIONSHIP_SIGNALS: dict[RelationshipTone, list[str]] = {
         "仲良し",
         "楽しそう",
         "元気そう",
+        "ありがとう",  # Gap fix: gratitude = warm
+        "姉様",  # Gap fix: respectful address = warm
     ],
     RelationshipTone.TEASING: [
         "からかう",
@@ -113,3 +116,82 @@ INTENSITY_REDUCERS: list[str] = [
     "まあ",
     "一応",
 ]
+
+
+# Negation tokens for negation guard
+# Prefix tokens: appear BEFORE the keyword
+# Note: 「全然」「まったく」are excluded because they can be used
+# for emphasis in positive contexts (e.g., 「全然最高！」)
+# These cases are covered by suffix tokens (e.g., 「くない」)
+NEGATION_PREFIX_TOKENS: list[str] = [
+    # Empty for now - suffix tokens handle most cases
+    # Future: Add context-aware prefix detection if needed
+]
+
+# Suffix tokens: appear AFTER the keyword (e.g., 嬉しくない)
+NEGATION_SUFFIX_TOKENS: list[str] = [
+    "くない",
+    "じゃない",
+    "でもない",
+    "ではない",
+]
+
+# Window size for negation check (characters)
+NEGATION_WINDOW: int = 6
+
+
+def count_signal_matches(text: str, signals: list[str]) -> int:
+    """Count signal matches with negation guard
+
+    Args:
+        text: Text to search in
+        signals: List of signal keywords to match
+
+    Returns:
+        Count of valid (non-negated) matches
+    """
+    count = 0
+    for signal in signals:
+        if signal in text:
+            if not _is_negated(text, signal):
+                count += 1
+    return count
+
+
+def _is_negated(text: str, signal: str) -> bool:
+    """Check if a signal match is negated
+
+    Checks for:
+    - Prefix tokens in window before the signal (全然, まったく)
+    - Suffix tokens in window after the signal (くない, じゃない)
+
+    Args:
+        text: Full text
+        signal: Signal keyword that was matched
+
+    Returns:
+        True if the signal is negated
+    """
+    # Find the position of the signal
+    pos = text.find(signal)
+    if pos < 0:
+        return False
+
+    # Check prefix window (before the signal)
+    prefix_start = max(0, pos - NEGATION_WINDOW)
+    prefix_window = text[prefix_start:pos]
+
+    for token in NEGATION_PREFIX_TOKENS:
+        if token in prefix_window:
+            return True
+
+    # Check suffix window (after the signal)
+    suffix_start = pos + len(signal)
+    suffix_end = min(len(text), suffix_start + NEGATION_WINDOW)
+    suffix_window = text[suffix_start:suffix_end]
+
+    for token in NEGATION_SUFFIX_TOKENS:
+        if token in suffix_window:
+            return True
+
+    return False

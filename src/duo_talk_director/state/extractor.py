@@ -18,6 +18,7 @@ from .signals import (
     CHARACTER_REFERENCES,
     INTENSITY_BOOSTERS,
     INTENSITY_REDUCERS,
+    count_signal_matches,
 )
 
 
@@ -128,13 +129,15 @@ class StateExtractor:
     def _detect_emotion(self, thought: str) -> tuple[EmotionType, int]:
         """Detect primary emotion and signal count
 
+        Uses negation guard to filter out negated keywords.
+
         Returns:
             Tuple of (detected emotion, signal count)
         """
         emotion_scores: dict[EmotionType, int] = {}
 
         for emotion, signals in EMOTION_SIGNALS.items():
-            count = sum(1 for signal in signals if signal in thought)
+            count = count_signal_matches(thought, signals)
             if count > 0:
                 emotion_scores[emotion] = count
 
@@ -198,13 +201,15 @@ class StateExtractor:
     def _detect_relationship(self, thought: str) -> RelationshipTone:
         """Detect relationship tone from thought
 
+        Uses negation guard to filter out negated keywords.
+
         Returns:
             Detected RelationshipTone
         """
         tone_scores: dict[RelationshipTone, int] = {}
 
         for tone, signals in RELATIONSHIP_SIGNALS.items():
-            count = sum(1 for signal in signals if signal in thought)
+            count = count_signal_matches(thought, signals)
             if count > 0:
                 tone_scores[tone] = count
 

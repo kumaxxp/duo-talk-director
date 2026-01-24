@@ -142,8 +142,10 @@ class TestStateExtractorRelationship:
 
     def test_relationship_teasing(self, extractor: StateExtractor):
         """Teasing signals should be detected"""
-        thought = "姉様は相変わらず素直じゃない"
-        state = extractor.extract(thought, "あゆ")
+        # Note: Avoid 「姉様」 which is now in WARM signals
+        thought = "あの子は相変わらず素直じゃない、からかうのが楽しい"
+        state = extractor.extract(thought, "やな")
+        # TEASING: 「相変わらず」「素直じゃない」「からかう」= 3
         assert state.relationship_tone == RelationshipTone.TEASING
 
     def test_relationship_concerned(self, extractor: StateExtractor):
