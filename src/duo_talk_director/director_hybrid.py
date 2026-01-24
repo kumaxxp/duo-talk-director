@@ -277,15 +277,15 @@ class DirectorHybrid(DirectorProtocol):
         Returns:
             List of fact dicts with format: [{"tag": "SCENE", "text": "..."}]
             Returns empty list if inject_enabled=False or no injection needed
+
+        Note:
+            Detection logic runs even when inject_enabled=False (for fair A/B comparison).
+            Only the return of facts is gated by inject_enabled.
         """
         # P1.5: Initialize decision tracking
         decision = InjectionDecision()
 
-        # Phase 3.2: Only inject if explicitly enabled
-        if not self.inject_enabled:
-            self._last_injection_decision = decision
-            return []
-
+        # RAG must be enabled for detection
         if not self.rag_enabled or self.rag_manager is None:
             self._last_injection_decision = decision
             return []
@@ -335,8 +335,15 @@ class DirectorHybrid(DirectorProtocol):
         if has_addressing_violation:
             reasons.append("addressing_violation")
 
+        # P1.5: Store reasons even if would_inject=False (for A/B transparency)
+        decision.reasons = reasons
+        decision.predicted_blocked_props = predicted_blocked
+        decision.detected_addressing_violation = has_addressing_violation
+        decision.detected_tone_violation = has_tone_violation
+
         if not would_inject:
             decision.would_inject = False
+            decision.facts_injected = 0
             self._last_injection_decision = decision
             return []
 
@@ -387,12 +394,16 @@ class DirectorHybrid(DirectorProtocol):
                     break
                 selected.append(fact)
 
-        # P1.5: Store decision details
+        # P1.5: Store decision details (reasons already set above)
         decision.would_inject = True
-        decision.reasons = reasons
-        decision.predicted_blocked_props = predicted_blocked
-        decision.detected_addressing_violation = has_addressing_violation
-        decision.detected_tone_violation = has_tone_violation
+
+        # Phase 3.2: Gate actual injection by inject_enabled
+        # Detection runs for both observe and inject modes (fair A/B comparison)
+        if not self.inject_enabled:
+            decision.facts_injected = 0  # Observed but not injected
+            self._last_injection_decision = decision
+            return []
+
         decision.facts_injected = len(selected)
         self._last_injection_decision = decision
 
