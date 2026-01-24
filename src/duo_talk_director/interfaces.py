@@ -237,3 +237,37 @@ class RAGSummary:
             "top_tags": self.top_tags,
             "used_for_attempts": self.used_for_attempts,
         }
+
+
+@dataclass
+class InjectionDecision:
+    """Decision details for RAG injection (Phase 3.2.1 P1.5)
+
+    Tracks why injection was triggered for debugging and analysis.
+
+    Attributes:
+        would_inject: Whether injection would/did trigger
+        reasons: List of trigger reasons (e.g., ["prohibited_terms", "tone_violation"])
+        predicted_blocked_props: Blocked props detected in topic (proactive)
+        detected_addressing_violation: Addressing violation detected in topic
+        detected_tone_violation: Tone violation detected in topic
+        facts_injected: Number of facts actually injected
+    """
+
+    would_inject: bool = False
+    reasons: list[str] = field(default_factory=list)
+    predicted_blocked_props: list[str] = field(default_factory=list)
+    detected_addressing_violation: bool = False
+    detected_tone_violation: bool = False
+    facts_injected: int = 0
+
+    def to_dict(self) -> dict:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "would_inject": self.would_inject,
+            "reasons": self.reasons,
+            "predicted_blocked_props": self.predicted_blocked_props,
+            "detected_addressing_violation": self.detected_addressing_violation,
+            "detected_tone_violation": self.detected_tone_violation,
+            "facts_injected": self.facts_injected,
+        }

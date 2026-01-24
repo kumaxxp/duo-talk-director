@@ -15,6 +15,7 @@ from .interfaces import (
     RAGLogEntry,
     RAGFactEntry,
     RAGSummary,
+    InjectionDecision,
 )
 from .director_minimal import DirectorMinimal
 from .director_llm import DirectorLLM
@@ -62,6 +63,7 @@ class DirectorHybrid(DirectorProtocol):
         self.inject_enabled = inject_enabled  # Phase 3.2: injection ON/OFF
         self.rag_manager: Optional[RAGManager] = RAGManager() if rag_enabled else None
         self._rag_attempts: list[RAGLogEntry] = []  # Track RAG for all attempts
+        self._last_injection_decision: Optional[InjectionDecision] = None  # P1.5: Detailed log
 
     def evaluate_response(
         self,
@@ -245,51 +247,133 @@ class DirectorHybrid(DirectorProtocol):
         """Clear RAG attempts tracking (call after turn completes)"""
         self._rag_attempts.clear()
 
+    # v3.2.1: Tone violation patterns (user requesting formal speech)
+    TONE_VIOLATION_PATTERNS = ["丁寧語", "敬語", "です。", "ます。", "ください"]
+
+    # v3.2.1 P2.5: Addressing violation patterns (あゆ calling やな incorrectly)
+    ADDRESSING_VIOLATION_PATTERNS = ["やなちゃん", "お姉ちゃん", "やな」", "やなを"]
+
     def get_facts_for_injection(
         self,
         speaker: str,
         response_text: str = "",
+        topic: str = "",
     ) -> list[dict]:
         """Get RAG facts for prompt injection (Phase 3.2)
 
         Searches RAG and returns facts if injection should trigger.
         Only returns facts when inject_enabled=True and would_inject=True.
 
+        v3.2.1: Added topic parameter for proactive detection:
+        - blocked_props: Check topic for blocked items
+        - tone_violation: Check topic for formal speech requests (やな only)
+        - addressing_violation: Check topic for incorrect addressing (あゆ only)
+
         Args:
             speaker: Character name ("やな" or "あゆ")
             response_text: Optional response text to check for violations
+            topic: User input/topic to check for blocked props proactively
 
         Returns:
             List of fact dicts with format: [{"tag": "SCENE", "text": "..."}]
             Returns empty list if inject_enabled=False or no injection needed
         """
+        # P1.5: Initialize decision tracking
+        decision = InjectionDecision()
+
         # Phase 3.2: Only inject if explicitly enabled
         if not self.inject_enabled:
+            self._last_injection_decision = decision
             return []
 
         if not self.rag_enabled or self.rag_manager is None:
+            self._last_injection_decision = decision
             return []
-
-        # Search RAG
-        result = self.rag_manager.search(speaker, response_text)
 
         # Check triggers
         blocked_props = self.rag_manager.session_rag.get_blocked_props()
-        has_blocked_prop = bool(blocked_props)
+
+        # v3.2.1: Proactive detection - check topic for blocked props
+        text_to_check = response_text or topic
+        predicted_blocked = [prop for prop in blocked_props if prop in text_to_check]
+        has_blocked_prop_in_text = bool(predicted_blocked)
+
+        # v3.2.1: Tone violation detection (やな being asked to use formal speech)
+        has_tone_violation = False
+        if speaker == "やな" and topic:
+            has_tone_violation = any(
+                pattern in topic for pattern in self.TONE_VIOLATION_PATTERNS
+            )
+
+        # v3.2.1 P2.5: Addressing violation detection (あゆ calling やな incorrectly)
+        has_addressing_violation = False
+        if speaker == "あゆ" and topic:
+            has_addressing_violation = any(
+                pattern in topic for pattern in self.ADDRESSING_VIOLATION_PATTERNS
+            )
+
+        # Search RAG (will find prohibited_terms)
+        result = self.rag_manager.search(speaker, text_to_check)
         has_prohibited_term = any("使わない" in f.content for f in result.facts)
 
-        # Only inject if triggered
-        would_inject = has_blocked_prop or has_prohibited_term
+        # Determine if injection should trigger
+        would_inject = (
+            has_blocked_prop_in_text or
+            has_prohibited_term or
+            has_tone_violation or
+            has_addressing_violation
+        )
+
+        # P1.5: Build reasons list
+        reasons: list[str] = []
+        if has_blocked_prop_in_text:
+            reasons.append("predicted_blocked_props")
+        if has_prohibited_term:
+            reasons.append("prohibited_terms")
+        if has_tone_violation:
+            reasons.append("tone_violation")
+        if has_addressing_violation:
+            reasons.append("addressing_violation")
+
         if not would_inject:
+            decision.would_inject = False
+            self._last_injection_decision = decision
             return []
 
         # Build fact cards (max 3, priority: SCENE > STYLE > REL)
         facts_by_tag: dict[str, list[dict]] = {"SCENE": [], "STYLE": [], "REL": []}
 
+        # v3.2.1: Add blocked prop facts proactively
+        if has_blocked_prop_in_text:
+            for prop in predicted_blocked:
+                facts_by_tag["SCENE"].append({
+                    "tag": "SCENE",
+                    "text": f"「{prop}」はSceneに存在しない。使用禁止。"
+                })
+
+        # v3.2.1: Add tone violation fact for やな
+        if has_tone_violation:
+            facts_by_tag["STYLE"].append({
+                "tag": "STYLE",
+                "text": "やなは「です/ます」禁止。崩して言う。"
+            })
+
+        # v3.2.1 P2.5: Add addressing violation fact for あゆ (proactive)
+        if has_addressing_violation:
+            facts_by_tag["STYLE"].append({
+                "tag": "STYLE",
+                "text": "あゆは「やなちゃん」禁止。代わりに「姉様」。"
+            })
+
+        # Add facts from RAG search (P2: with custom replacements for stronger guidance)
         for fact in result.facts:
             tag = self.rag_manager._get_fact_tag(fact)
             if tag in facts_by_tag:
-                facts_by_tag[tag].append({"tag": tag, "text": fact.content})
+                text = fact.content
+                # P2: Replace generic prohibited_terms with specific alternatives
+                if "やなちゃん" in text and "使わない" in text:
+                    text = "あゆは「やなちゃん」禁止。代わりに「姉様」。"
+                facts_by_tag[tag].append({"tag": tag, "text": text})
 
         # Select with priority (max 3 total)
         selected: list[dict] = []
@@ -303,7 +387,24 @@ class DirectorHybrid(DirectorProtocol):
                     break
                 selected.append(fact)
 
+        # P1.5: Store decision details
+        decision.would_inject = True
+        decision.reasons = reasons
+        decision.predicted_blocked_props = predicted_blocked
+        decision.detected_addressing_violation = has_addressing_violation
+        decision.detected_tone_violation = has_tone_violation
+        decision.facts_injected = len(selected)
+        self._last_injection_decision = decision
+
         return selected
+
+    def get_last_injection_decision(self) -> Optional[InjectionDecision]:
+        """Get the last injection decision details (P1.5)
+
+        Returns:
+            InjectionDecision with detailed breakdown, or None
+        """
+        return self._last_injection_decision
 
     def _merge_results(
         self,
