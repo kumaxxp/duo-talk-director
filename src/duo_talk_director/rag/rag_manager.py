@@ -13,6 +13,16 @@ from .fact_card import FactCard, RAGResult, MAX_FACT_COUNT
 from .persona_rag import PersonaRAG
 from .session_rag import SessionRAG, SceneContext
 
+# Tag mapping from fact content patterns
+TAG_MAPPING = {
+    "使わない": "STYLE",  # Prohibited terms
+    "呼ぶ": "REL",  # Addressing rules
+    "話し方": "STYLE",  # Speech style
+    "Scene": "SCENE",  # Scene props
+    "存在しない": "SCENE",  # Blocked props
+    "話題": "SCENE",  # Current topic
+}
+
 
 class RAGManager:
     """Unified RAG manager combining Persona and Session RAG
@@ -165,3 +175,41 @@ class RAGManager:
     def reset_session(self) -> None:
         """Reset session state (call when starting new conversation)"""
         self.session_rag.reset()
+
+    def to_log_entry(
+        self,
+        result: RAGResult,
+        triggered_by: Optional[list[str]] = None,
+    ) -> dict:
+        """Convert RAGResult to log entry format for Phase 3.1 logging
+
+        Args:
+            result: RAGResult from search
+            triggered_by: Optional list of triggers (e.g., ["blocked_props"])
+
+        Returns:
+            Dictionary suitable for RAGLogEntry
+        """
+        facts_log = []
+        for i, fact in enumerate(result.facts):
+            # Determine tag from content
+            tag = "STYLE"  # default
+            for pattern, tag_name in TAG_MAPPING.items():
+                if pattern in fact.content:
+                    tag = tag_name
+                    break
+
+            facts_log.append({
+                "tag": tag,
+                "text": fact.content,
+                "source": fact.source,
+                "id": f"{fact.source}_{i:03d}",
+            })
+
+        return {
+            "enabled": self._enabled,
+            "triggered_by": triggered_by or [],
+            "blocked_props": self.session_rag.get_blocked_props(),
+            "facts": facts_log,
+            "latency_ms": result.query_time_ms,
+        }

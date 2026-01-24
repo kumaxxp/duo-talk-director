@@ -11,6 +11,9 @@ from .interfaces import (
     DirectorEvaluation,
     DirectorProtocol,
     LLMEvaluationScore,
+    RAGFactEntry,
+    RAGLogEntry,
+    RAGSummary,
 )
 from .director_minimal import DirectorMinimal
 from .director_llm import DirectorLLM
@@ -26,13 +29,17 @@ from .logging import (
     reset_log_store,
 )
 
-__version__ = "2.3.0"  # Phase 2.3: Logging and mini-benchmark
+__version__ = "3.1.0"  # Phase 3.1: RAG integration (log only)
 __all__ = [
     # Interfaces
     "DirectorStatus",
     "DirectorEvaluation",
     "DirectorProtocol",
     "LLMEvaluationScore",
+    # RAG types (Phase 3.1)
+    "RAGFactEntry",
+    "RAGLogEntry",
+    "RAGSummary",
     # Directors
     "DirectorMinimal",
     "DirectorLLM",
