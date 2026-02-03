@@ -1,24 +1,43 @@
 # duo-talk-director
 
-Dialogue quality monitoring and control for duo-talk-core.
+> 対話品質監視・RAG Injection・状態抽出
+
+[![Version](https://img.shields.io/badge/Version-v1.0.0-blue)]()
+[![Python](https://img.shields.io/badge/Python-3.11+-blue)]()
+[![License](https://img.shields.io/badge/License-MIT-green)]()
+
+---
 
 ## Overview
 
-duo-talk-director provides optional quality control for duo-talk-core dialogue generation:
+**duo-talk-director** は、duo-talk-coreの対話品質を監視・制御するコンポーネントです。
 
-- **Static Checks**: Tone markers, forbidden words, setting consistency
-- **LLM Scoring**: 5-axis quality evaluation (Phase 2.2)
-- **Loop Detection**: NoveltyGuard for repetition prevention (Phase 2.3)
+- **静的チェック**: トーンマーカー、禁止語、設定一貫性
+- **LLMスコアリング**: 5軸品質評価
+- **NoveltyGuard**: ループ検出・繰り返し防止
+- **RAG Injection**: 事実情報の注入
+
+---
+
+## Features
+
+| 機能 | 説明 |
+|:-----|:-----|
+| Static Checks | トーンマーカー検出、禁止語チェック |
+| LLM Scoring | 5軸品質評価（キャラ性、自然さ等） |
+| NoveltyGuard | 繰り返し・ループ検出 |
+| RAG Observation | 状態監視・抽出 |
+| RAG Injection | 事実情報の注入 |
+
+---
 
 ## Installation
 
 ```bash
-# Development installation
-pip install -e ".[dev]"
-
-# With duo-talk-core integration
-pip install -e ".[dev,core]"
+pip install -e .
 ```
+
+---
 
 ## Quick Start
 
@@ -38,54 +57,60 @@ evaluation = director.evaluate_response(
 )
 
 print(f"Status: {evaluation.status}")  # PASS, WARN, RETRY, or MODIFY
-print(f"Reason: {evaluation.reason}")
 ```
 
-## Integration with duo-talk-core
-
-```python
-from duo_talk_core import create_dialogue_manager
-from duo_talk_director import DirectorMinimal
-
-# Create manager with director
-director = DirectorMinimal()
-manager = create_dialogue_manager(
-    model="gemma3:12b",
-    director=director,
-)
-
-# Generate dialogue with quality control
-session = manager.run_session(
-    topic="最近のAI技術について",
-    turns=5,
-)
-```
+---
 
 ## Director Types
 
-| Type | Features | Latency |
-|------|----------|---------|
-| DirectorMinimal | Static checks only | <200ms |
-| Director | LLM scoring + static | <2s |
-| DirectorWithNovelty | Full features | <3s |
+| Type | Features | Latency | Use Case |
+|:-----|:---------|:-------:|:---------|
+| DirectorMinimal | 静的チェックのみ | <200ms | 軽量評価 |
+| DirectorLLM | LLMスコアリング | <2s | 品質重視 |
+| DirectorHybrid | 全機能 | <3s | 本番環境 |
+
+---
 
 ## Evaluation Status
 
-- `PASS`: Quality OK, no intervention needed
-- `WARN`: Minor issues, acceptable
-- `RETRY`: Regenerate response
-- `MODIFY`: Critical issue, may need to stop
+| Status | 説明 | アクション |
+|:-------|:-----|:----------|
+| `PASS` | 品質OK | 介入不要 |
+| `WARN` | 軽微な問題 | 許容 |
+| `RETRY` | 品質不足 | 再生成 |
+| `MODIFY` | 重大な問題 | 停止検討 |
 
-## Testing
+---
 
-```bash
-# Run tests
-python -m pytest tests/ -v
+## Architecture
 
-# With coverage
-python -m pytest tests/ -v --cov=src/duo_talk_director --cov-report=term-missing
 ```
+duo-talk-director/
+├── src/duo_talk_director/
+│   ├── director_minimal.py  # 静的チェック
+│   ├── director_llm.py      # LLMスコアリング
+│   ├── director_hybrid.py   # ハイブリッド
+│   ├── novelty_guard.py     # ループ検出
+│   └── rag_injector.py      # RAG Injection
+└── tests/
+```
+
+---
+
+## Ecosystem
+
+```
+duo-talk-ecosystem/
+├── duo-talk-core/        # 対話生成エンジン
+├── duo-talk-director/    # ← YOU ARE HERE
+├── duo-talk-gm/          # 世界状態管理
+└── duo-talk-evaluation/  # 統合評価・司令部 ⚓
+```
+
+詳細: [duo-talk-evaluation](https://github.com/kumaxxp/duo-talk-evaluation)
+
+---
 
 ## License
 
-MIT
+MIT License
